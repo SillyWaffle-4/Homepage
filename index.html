@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aiden's Page</title>
+    <style>
+        /* General Page Styling */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f4f4f9;
+        }
+
+        header h1 {
+            color: #333;
+            margin-bottom: 2rem;
+        }
+
+        /* Button Container */
+        main {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        /* Base Button Styling */
+        .btn {
+            padding: 100px 160px;
+            font-size: 2rem;
+            font-weight: bold;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            text-decoration: none; /* Removes underline from link */
+            transition: transform 0.2s, opacity 0.2s;
+            display: inline-block;
+        }
+
+        .btn:hover {
+            transform: translateY(-3px);
+            opacity: 0.9;
+        }
+
+        label {
+            font-size: 1.5rem;
+            margin-right: 10px;
+        }
+
+        .checkbox {
+            width: 20px;
+            height: 20px;
+            margin-right: 20px;
+            cursor: pointer;
+        }
+
+        /* Specific Brand Colors */
+        .canvas { background-color: #E00000; }  
+        .epschedule { background-color: #004a99; }
+        .membean { background-color: #48993d; } 
+        .teamsnap { background-color: #ff8200; }
+
+    </style>
+</head>
+<body>
+
+    <main>
+        <a href="https://eastsideprep.instructure.com" class="btn canvas">Canvas</a>
+        <a href="https://www.epschedule.com" class="btn epschedule">EPSchedule</a>
+        <a href="https://membean.com/dashboard" class="btn membean">Membean</a>
+        <a href="https://go.teamsnap.com/10464134/home" class="btn teamsnap">TeamSnap</a>
+    </main>
+
+</body>
+</html>
