@@ -12,9 +12,9 @@ const info = {
   habits: ["Habit tracker", "Build a little consistency"], notes: ["Scratchpad", "A place for passing thoughts"]
 };
 const initialLayouts = {
-  lg: [{ i:"clock",x:0,y:0,w:3,h:3,minW:2,minH:3 },{ i:"weather",x:3,y:0,w:3,h:5,minW:2,minH:5 },{ i:"quote",x:6,y:0,w:6,h:3,minW:3,minH:3 },{ i:"tasks",x:0,y:3,w:4,h:6,minW:2,minH:4 },{ i:"pomodoro",x:4,y:3,w:4,h:6,minW:2,minH:4 },{ i:"links",x:8,y:3,w:4,h:6,minW:3,minH:3 },{ i:"habits",x:0,y:9,w:6,h:4,minW:3,minH:4 },{ i:"notes",x:6,y:7,w:6,h:6,minW:3,minH:4 }],
-  md: [{ i:"clock",x:0,y:0,w:5,h:3 },{ i:"weather",x:5,y:0,w:5,h:5,minH:5 },{ i:"quote",x:0,y:3,w:10,h:3 },{ i:"tasks",x:0,y:6,w:5,h:6 },{ i:"pomodoro",x:5,y:6,w:5,h:6 },{ i:"links",x:0,y:12,w:10,h:4 },{ i:"habits",x:0,y:16,w:5,h:4 },{ i:"notes",x:5,y:16,w:5,h:4 }],
-  sm: [{ i:"clock",x:0,y:0,w:6,h:3 },{ i:"weather",x:0,y:3,w:6,h:3 },{ i:"quote",x:0,y:6,w:6,h:3 },{ i:"tasks",x:0,y:9,w:6,h:5 },{ i:"pomodoro",x:0,y:14,w:6,h:5 },{ i:"links",x:0,y:19,w:6,h:4 },{ i:"habits",x:0,y:23,w:6,h:4 },{ i:"notes",x:0,y:27,w:6,h:4 }]
+  lg: [{i:"clock",x:0,y:0,w:3,h:3,minW:2,minH:3},{i:"quote",x:3,y:0,w:5,h:3,minW:3,minH:3},{i:"tasks",x:8,y:0,w:4,h:8,minW:2,minH:4},{i:"pomodoro",x:0,y:3,w:5,h:8,minW:2,minH:4},{i:"weather",x:5,y:3,w:3,h:8,minW:2,minH:5},{i:"links",x:8,y:8,w:4,h:3,minW:3,minH:3},{i:"habits",x:0,y:11,w:6,h:4,minW:3,minH:4},{i:"notes",x:6,y:11,w:6,h:4,minW:3,minH:4}],
+  md: [{i:"clock",x:0,y:0,w:3,h:3},{i:"quote",x:3,y:0,w:4,h:3},{i:"tasks",x:7,y:0,w:3,h:8},{i:"pomodoro",x:0,y:3,w:4,h:8},{i:"weather",x:4,y:3,w:3,h:8},{i:"links",x:7,y:8,w:3,h:3},{i:"habits",x:0,y:11,w:5,h:4},{i:"notes",x:5,y:11,w:5,h:4}],
+  sm: [{i:"clock",x:0,y:0,w:6,h:3},{i:"quote",x:0,y:3,w:6,h:3},{i:"tasks",x:0,y:6,w:6,h:6},{i:"pomodoro",x:0,y:12,w:6,h:6},{i:"weather",x:0,y:18,w:6,h:5},{i:"links",x:0,y:23,w:6,h:4},{i:"habits",x:0,y:27,w:6,h:4},{i:"notes",x:0,y:31,w:6,h:4}]
 };
 const quotes = [["The best way to predict the future is to create it.","Peter Drucker"],["Small steps every day add up to big changes.","Unknown"],["You do not have to see the whole staircase, just take the first step.","Martin Luther King Jr."],["Do what you can, with what you have, where you are.","Theodore Roosevelt"],["Focus on being productive instead of busy.","Tim Ferriss"],["Simplicity is the ultimate sophistication.","Leonardo da Vinci"]];
 const load = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) || fallback; } catch { return fallback; } };
@@ -28,13 +28,13 @@ export default function App() {
   const [editing, setEditing] = useState(false), [library, setLibrary] = useState(false), [settings, setSettings] = useState(false), [presets, setPresets] = useState(false), [backupMessage, setBackupMessage] = useState("");
   const [layouts, setLayouts] = useState(() => normalizeLayouts(load("dash-layouts", initialLayouts))), [visible, setVisible] = useState(() => load("dash-visible", defaultVisible));
   const [savedLayouts, setSavedLayouts] = useState(() => load("dash-saved-layouts", [])), [layoutName, setLayoutName] = useState("");
-  const [tasks, setTasks] = useState(() => load("dash-tasks", [{id:1,text:"Review daily priorities",done:true},{id:2,text:"Complete project proposal",done:false}]));
+  const [tasks, setTasks] = useState(() => load("dash-tasks", []));
   const [taskText, setTaskText] = useState(""), [font, setFont] = useState(() => localStorage.getItem("dash-font") || "sans"), [theme, setTheme] = useState(() => localStorage.getItem("dash-theme") || "dusk"), [city, setCity] = useState(() => localStorage.getItem("dash-city") || "San Francisco");
   const [name, setName] = useState(() => localStorage.getItem("dash-name") || "Aiden"), [workspace, setWorkspace] = useState(() => localStorage.getItem("dash-workspace") || "My Dash"), [clockMode, setClockMode] = useState(() => localStorage.getItem("dash-clock") || "12"), [unit, setUnit] = useState(() => localStorage.getItem("dash-unit") || "F");
   const [appearance, setAppearance] = useState(() => ({accent:"#6658e8",opacity:88,blur:16,radius:14,spacing:18,wallpaper:"forest",imageUrl:"",brightness:85,imageBlur:0,...load("dash-appearance",{})}));
   const [topbarHidden, setTopbarHidden] = useState(() => localStorage.getItem("dash-topbar-hidden") === "true");
   const [links, setLinks] = useState(() => load("dash-links", [{ name:"GitHub", url:"https://github.com", color:"#5160c9" }, { name:"Docs", url:"https://docs.google.com", color:"#e06b48" }, { name:"Calendar", url:"https://calendar.google.com", color:"#e0a838" }, { name:"Music", url:"https://music.youtube.com", color:"#48a27e" }]));
-  const [habits, setHabits] = useState(() => load("dash-habits", [{id:1,name:"Read 15 minutes",days:[true,true,false,true,false,false,false]},{id:2,name:"Stretch",days:[true,false,true,false,false,false,false]}]));
+  const [habits, setHabits] = useState(() => load("dash-habits", []));
   const [habitText, setHabitText] = useState("");
   const [note, setNote] = useState(() => localStorage.getItem("dash-note") || "");
   const [showSeconds, setShowSeconds] = useState(() => localStorage.getItem("dash-seconds") !== "false");
@@ -76,6 +76,11 @@ export default function App() {
   const remove = id => setVisible(current => current.filter(item => item !== id));
   const addTask = event => { event.preventDefault(); if (!taskText.trim()) return; setTasks(current => [...current, {id:Date.now(),text:taskText.trim(),done:false}]); setTaskText(""); };
   const reset = () => { setLayouts(initialLayouts); setVisible(defaultVisible); };
+  const resetAll = () => {
+    if (!window.confirm("Reset all dashboard data? This clears tasks, notes, habits, saved layouts, and your settings.")) return;
+    Object.keys(localStorage).filter(key => key.startsWith("dash-")).forEach(key => localStorage.removeItem(key));
+    window.location.reload();
+  };
   const addWidget = id => { setVisible(current => current.includes(id) ? current : [...current,id]); setLibrary(false); setEditing(true); };
   const updateLink = (index, field, value) => setLinks(current => current.map((link, item) => item === index ? { ...link, [field]: value } : link));
   const addHabit = event => { event.preventDefault(); if (!habitText.trim()) return; setHabits(current => [...current,{id:Date.now(),name:habitText.trim(),days:Array(7).fill(false)}]); setHabitText(""); };
@@ -168,7 +173,7 @@ export default function App() {
       <section className="setting"><span>Top bar</span><label className="toggle-row"><span>Hide header bar</span><input type="checkbox" checked={topbarHidden} onChange={event => setTopbarHidden(event.target.checked)}/><i/></label></section>
       <section className="setting"><span>Clock & weather</span><div className="choice-row"><button className={clockMode === "12" ? "selected" : ""} type="button" onClick={() => setClockMode("12")}>12-hour time</button><button className={clockMode === "24" ? "selected" : ""} type="button" onClick={() => setClockMode("24")}>24-hour time</button></div><label className="toggle-row"><span>Show seconds</span><input type="checkbox" checked={showSeconds} onChange={event => setShowSeconds(event.target.checked)}/><i/></label><div className="choice-row"><button className={unit === "F" ? "selected" : ""} type="button" onClick={() => setUnit("F")}>Fahrenheit</button><button className={unit === "C" ? "selected" : ""} type="button" onClick={() => setUnit("C")}>Celsius</button></div><label htmlFor="city">Weather location</label><div className="city"><input id="city" value={city} placeholder="City name" onChange={event => setCity(event.target.value)}/><ChevronDown size={17}/></div><small className="field-hint">Current conditions and today's high/low.</small></section>
       <section className="setting"><span>Shortcuts</span>{links.map((link,index) => <div className="link-editor" key={index}><input aria-label={`Shortcut ${index + 1} name`} value={link.name} onChange={event => updateLink(index,"name",event.target.value)} /><input aria-label={`Shortcut ${index + 1} URL`} value={link.url} onChange={event => updateLink(index,"url",event.target.value)} /><input aria-label={`Shortcut ${index + 1} color`} className="link-color" type="color" value={link.color} onChange={event => updateLink(index,"color",event.target.value)} /><IconButton label={`Remove ${link.name || "shortcut"}`} onClick={() => setLinks(current => current.filter((_,item) => item !== index))}><Trash2 size={15}/></IconButton></div>)}<button className="add-shortcut-setting" type="button" onClick={() => setLinks(current => [...current,{name:"New link",url:"https://",color:"#6658e8"}])}><Plus size={16}/>Add shortcut</button></section>
-      <section className="setting backup-setting"><span>Backup & restore</span><button type="button" onClick={exportWorkspace}><Download size={16}/>Export dashboard</button><label className="import-button"><Upload size={16}/>Import dashboard<input type="file" accept="application/json,.json" onChange={importWorkspace}/></label>{backupMessage && <small className="field-hint" role="status">{backupMessage}</small>}</section>
+      <section className="setting backup-setting"><span>Backup & restore</span><button type="button" onClick={exportWorkspace}><Download size={16}/>Export dashboard</button><label className="import-button"><Upload size={16}/>Import dashboard<input type="file" accept="application/json,.json" onChange={importWorkspace}/></label>{backupMessage && <small className="field-hint" role="status">{backupMessage}</small>}<button className="reset-all" type="button" onClick={resetAll}><Trash2 size={16}/>Reset all data</button></section>
       <button className="reset" type="button" onClick={reset}><RotateCcw size={17}/>Reset widget layout</button></aside>}
     {(library || settings) && <button className="scrim" type="button" aria-label="Close panel" onClick={() => { setLibrary(false); setSettings(false); }}/>}</main>;
 }
