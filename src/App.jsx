@@ -1,24 +1,28 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, Check, ChevronDown, CloudSun, Download, Eye, EyeOff, GripVertical, LayoutDashboard, Lock, Maximize2, Minus, NotebookPen, Pause, Play, Plus, Quote, RotateCcw, Settings2, TimerReset, Trash2, Type, Unlock, Upload, X } from "lucide-react";
 import { Responsive, WidthProvider } from "react-grid-layout/legacy";
 
 const Grid = WidthProvider(Responsive);
-const ids = ["clock", "weather", "quote", "tasks", "pomodoro", "links", "habits", "notes"];
-const defaultVisible = ids.slice(0, 6);
+const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+const ids = ["clock", "weather", "quote", "tasks", "pomodoro", "links", "habits", "notes", "calendar"];
+const defaultVisible = [...ids.slice(0, 6), "calendar"];
 const info = {
   clock: ["Clock & date", "A live view of your day"], weather: ["Weather", "A quick local forecast"],
   quote: ["Daily quote", "A small thought for the day"], tasks: ["Task list", "Keep priorities nearby"],
   pomodoro: ["Pomodoro", "A focused work timer"], links: ["Quick links", "Your most used destinations"],
-  habits: ["Habit tracker", "Build a little consistency"], notes: ["Scratchpad", "A place for passing thoughts"]
+  habits: ["Habit tracker", "Build a little consistency"], notes: ["Scratchpad", "A place for passing thoughts"],
+  calendar: ["Google Calendar", "Your next three days"]
 };
 const initialLayouts = {
-  lg: [{i:"clock",x:0,y:0,w:3,h:3,minW:2,minH:3},{i:"quote",x:3,y:0,w:5,h:3,minW:3,minH:3},{i:"tasks",x:8,y:0,w:4,h:8,minW:2,minH:4},{i:"pomodoro",x:0,y:3,w:5,h:8,minW:2,minH:4},{i:"weather",x:5,y:3,w:3,h:8,minW:2,minH:5},{i:"links",x:8,y:8,w:4,h:3,minW:3,minH:3},{i:"habits",x:0,y:11,w:6,h:4,minW:3,minH:4},{i:"notes",x:6,y:11,w:6,h:4,minW:3,minH:4}],
-  md: [{i:"clock",x:0,y:0,w:3,h:3},{i:"quote",x:3,y:0,w:4,h:3},{i:"tasks",x:7,y:0,w:3,h:8},{i:"pomodoro",x:0,y:3,w:4,h:8},{i:"weather",x:4,y:3,w:3,h:8},{i:"links",x:7,y:8,w:3,h:3},{i:"habits",x:0,y:11,w:5,h:4},{i:"notes",x:5,y:11,w:5,h:4}],
-  sm: [{i:"clock",x:0,y:0,w:6,h:3},{i:"quote",x:0,y:3,w:6,h:3},{i:"tasks",x:0,y:6,w:6,h:6},{i:"pomodoro",x:0,y:12,w:6,h:6},{i:"weather",x:0,y:18,w:6,h:5},{i:"links",x:0,y:23,w:6,h:4},{i:"habits",x:0,y:27,w:6,h:4},{i:"notes",x:0,y:31,w:6,h:4}]
+  lg: [{i:"clock",x:0,y:0,w:3,h:3,minW:2,minH:3},{i:"quote",x:3,y:0,w:5,h:3,minW:3,minH:3},{i:"calendar",x:8,y:0,w:4,h:13,minW:3,minH:5},{i:"pomodoro",x:0,y:3,w:2,h:7,minW:2,minH:4},{i:"weather",x:2,y:3,w:2,h:7,minW:2,minH:5},{i:"tasks",x:4,y:3,w:4,h:10,minW:3,minH:4},{i:"links",x:0,y:10,w:4,h:3,minW:3,minH:3},{i:"habits",x:0,y:13,w:6,h:4,minW:3,minH:4},{i:"notes",x:6,y:13,w:6,h:4,minW:3,minH:4}],
+  md: [{i:"clock",x:0,y:0,w:3,h:3},{i:"quote",x:3,y:0,w:4,h:3},{i:"calendar",x:7,y:0,w:3,h:14},{i:"pomodoro",x:0,y:3,w:3,h:7},{i:"weather",x:3,y:3,w:2,h:7},{i:"tasks",x:5,y:6,w:5,h:8},{i:"links",x:0,y:10,w:5,h:4},{i:"habits",x:0,y:14,w:5,h:4},{i:"notes",x:5,y:14,w:5,h:4}],
+  sm: [{i:"clock",x:0,y:0,w:6,h:3},{i:"quote",x:0,y:3,w:6,h:3},{i:"calendar",x:0,y:6,w:6,h:6},{i:"pomodoro",x:0,y:12,w:6,h:6},{i:"weather",x:0,y:18,w:6,h:5},{i:"tasks",x:0,y:23,w:6,h:7},{i:"links",x:0,y:30,w:6,h:4},{i:"habits",x:0,y:34,w:6,h:4},{i:"notes",x:0,y:38,w:6,h:4}]
 };
 const quotes = [["The best way to predict the future is to create it.","Peter Drucker"],["Small steps every day add up to big changes.","Unknown"],["You do not have to see the whole staircase, just take the first step.","Martin Luther King Jr."],["Do what you can, with what you have, where you are.","Theodore Roosevelt"],["Focus on being productive instead of busy.","Tim Ferriss"],["Simplicity is the ultimate sophistication.","Leonardo da Vinci"]];
 const load = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) || fallback; } catch { return fallback; } };
 const normalizeLayouts = value => Object.fromEntries(Object.entries(value || initialLayouts).map(([breakpoint,items]) => [breakpoint,items.map(item => item.i === "weather" ? {...item,h:Math.max(item.h,breakpoint === "sm" ? 4 : 5),minH:breakpoint === "sm" ? 4 : 5} : item)]));
+const localDateKey = date => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
+const eventDateKey = event => event.start?.date || localDateKey(new Date(event.start?.dateTime));
 const weatherDescription = code => ({0:"Clear sky",1:"Mainly clear",2:"Partly cloudy",3:"Overcast",45:"Foggy",48:"Rime fog",51:"Light drizzle",53:"Drizzle",55:"Heavy drizzle",56:"Freezing drizzle",57:"Freezing drizzle",61:"Light rain",63:"Rain",65:"Heavy rain",66:"Freezing rain",67:"Freezing rain",71:"Light snow",73:"Snow",75:"Heavy snow",77:"Snow grains",80:"Rain showers",81:"Rain showers",82:"Heavy showers",85:"Snow showers",86:"Heavy snow showers",95:"Thunderstorm",96:"Thunderstorm with hail",99:"Thunderstorm with hail"}[code] || "Conditions unavailable");
 
 function IconButton({ label, onClick, children, className = "" }) { return <button type="button" className={`icon-button ${className}`} title={label} aria-label={label} onClick={onClick}>{children}</button>; }
@@ -26,7 +30,29 @@ function Frame({ id, editing, remove, children }) { return <section className={`
 
 export default function App() {
   const [editing, setEditing] = useState(false), [library, setLibrary] = useState(false), [settings, setSettings] = useState(false), [presets, setPresets] = useState(false), [backupMessage, setBackupMessage] = useState("");
-  const [layouts, setLayouts] = useState(() => normalizeLayouts(load("dash-layouts", initialLayouts))), [visible, setVisible] = useState(() => load("dash-visible", defaultVisible));
+  const [layouts, setLayouts] = useState(() => {
+    const current = normalizeLayouts(load("dash-layouts", initialLayouts));
+    if (localStorage.getItem("dash-calendar-layout-v3") === "true") return current;
+    localStorage.setItem("dash-calendar-layout-v3", "true");
+    const calendarHeights = {lg:13,md:14,sm:6};
+    return Object.fromEntries(Object.entries(current).map(([breakpoint, items]) => [
+      breakpoint,
+      items.map(item => {
+        if (item.i === "calendar") return {...item,h:calendarHeights[breakpoint] ?? item.h};
+        if (breakpoint === "lg" && (item.i === "pomodoro" || item.i === "weather")) return {...item,h:7};
+        if (breakpoint === "lg" && item.i === "links") return {...item,y:10,h:3};
+        if (breakpoint === "lg" && (item.i === "habits" || item.i === "notes")) return {...item,y:13};
+        return item;
+      }),
+    ]));
+  }), [visible, setVisible] = useState(() => {
+    const stored = load("dash-visible", null);
+    if (localStorage.getItem("dash-calendar-default-v1") !== "true") {
+      localStorage.setItem("dash-calendar-default-v1", "true");
+      return [...new Set([...(stored ?? defaultVisible), "calendar"])]
+    }
+    return stored ?? defaultVisible;
+  });
   const [savedLayouts, setSavedLayouts] = useState(() => load("dash-saved-layouts", [])), [layoutName, setLayoutName] = useState("");
   const [tasks, setTasks] = useState(() => load("dash-tasks", []));
   const [taskText, setTaskText] = useState(""), [font, setFont] = useState(() => localStorage.getItem("dash-font") || "sans"), [theme, setTheme] = useState(() => localStorage.getItem("dash-theme") || "dusk"), [city, setCity] = useState(() => localStorage.getItem("dash-city") || "San Francisco");
@@ -40,11 +66,69 @@ export default function App() {
   const [showSeconds, setShowSeconds] = useState(() => localStorage.getItem("dash-seconds") !== "false");
   const [now, setNow] = useState(new Date()), [quote, setQuote] = useState(0), [minutes, setMinutes] = useState(25), [left, setLeft] = useState(1500), [running, setRunning] = useState(false);
   const [weather, setWeather] = useState(null), [weatherStatus, setWeatherStatus] = useState("loading"), [weatherError, setWeatherError] = useState("");
+  const [calendarEvents, setCalendarEvents] = useState([]), [calendarStatus, setCalendarStatus] = useState("disconnected"), [calendarError, setCalendarError] = useState(""), [googleReady, setGoogleReady] = useState(false);
+  const googleTokenClient = useRef(null);
   useEffect(() => { const interval = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(interval); }, []);
   useEffect(() => localStorage.setItem("dash-layouts", JSON.stringify(layouts)), [layouts]); useEffect(() => localStorage.setItem("dash-visible", JSON.stringify(visible)), [visible]); useEffect(() => localStorage.setItem("dash-saved-layouts", JSON.stringify(savedLayouts)), [savedLayouts]); useEffect(() => localStorage.setItem("dash-tasks", JSON.stringify(tasks)), [tasks]);
   useEffect(() => { document.documentElement.dataset.font = font; localStorage.setItem("dash-font", font); }, [font]); useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem("dash-theme", theme); }, [theme]); useEffect(() => localStorage.setItem("dash-city", city), [city]);
   useEffect(() => localStorage.setItem("dash-name", name), [name]); useEffect(() => localStorage.setItem("dash-workspace", workspace), [workspace]); useEffect(() => localStorage.setItem("dash-clock", clockMode), [clockMode]); useEffect(() => localStorage.setItem("dash-unit", unit), [unit]); useEffect(() => localStorage.setItem("dash-appearance", JSON.stringify(appearance)), [appearance]); useEffect(() => localStorage.setItem("dash-links", JSON.stringify(links)), [links]); useEffect(() => localStorage.setItem("dash-topbar-hidden", String(topbarHidden)), [topbarHidden]); useEffect(() => localStorage.setItem("dash-habits", JSON.stringify(habits)), [habits]); useEffect(() => localStorage.setItem("dash-note", note), [note]); useEffect(() => localStorage.setItem("dash-seconds", String(showSeconds)), [showSeconds]);
   useEffect(() => { if (!running || !left) return; const interval = setInterval(() => setLeft(value => value - 1), 1000); return () => clearInterval(interval); }, [running, left]); useEffect(() => { if (!left) setRunning(false); }, [left]);
+  useEffect(() => {
+    if (!googleClientId || window.google?.accounts?.oauth2) { setGoogleReady(Boolean(window.google?.accounts?.oauth2)); return; }
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = () => setGoogleReady(Boolean(window.google?.accounts?.oauth2));
+    script.onerror = () => setCalendarError("Google sign-in could not be loaded.");
+    document.head.appendChild(script);
+  }, []);
+  const fetchCalendarEvents = async accessToken => {
+    setCalendarStatus("loading"); setCalendarError("");
+    const start = new Date();
+    start.setHours(0,0,0,0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 3);
+    try {
+      const headers = {Authorization:`Bearer ${accessToken}`};
+      const calendarResponse = await fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=250", {headers});
+      if (!calendarResponse.ok) throw new Error(calendarResponse.status === 401 || calendarResponse.status === 403 ? "Google Calendar access was denied. Reconnect and allow calendar access." : "Google Calendar is unavailable right now.");
+      const calendars = (await calendarResponse.json()).items ?? [];
+      const readableCalendars = calendars.filter(calendar => calendar.accessRole && calendar.accessRole !== "freeBusyReader");
+      const eventLists = await Promise.all(readableCalendars.map(async calendar => {
+        const params = new URLSearchParams({timeMin:start.toISOString(),timeMax:end.toISOString(),singleEvents:"true",orderBy:"startTime",maxResults:"50",timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone});
+        try {
+          const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendar.id)}/events?${params}`, {headers});
+          if (!response.ok) return [];
+          const data = await response.json();
+          return (data.items ?? []).map(event => ({...event,calendarName:calendar.summary}));
+        } catch {
+          return [];
+        }
+      }));
+      const events = eventLists.flat().sort((a,b) => new Date(a.start?.dateTime || a.start?.date).getTime() - new Date(b.start?.dateTime || b.start?.date).getTime());
+      setCalendarEvents(events);
+      setCalendarStatus("ready");
+    } catch (error) {
+      setCalendarEvents([]); setCalendarStatus("error"); setCalendarError(error.message || "Could not load calendar events.");
+    }
+  };
+  const connectGoogleCalendar = () => {
+    if (!googleClientId || !googleReady) return;
+    googleTokenClient.current = window.google.accounts.oauth2.initTokenClient({
+      client_id: googleClientId,
+      scope: "https://www.googleapis.com/auth/calendar.readonly",
+      callback: tokenResponse => {
+        if (tokenResponse.error || !tokenResponse.access_token) {
+          setCalendarStatus("error"); setCalendarError("Google sign-in was not completed."); return;
+        }
+        void fetchCalendarEvents(tokenResponse.access_token);
+      },
+      error_callback: () => { setCalendarStatus("error"); setCalendarError("Google sign-in was closed before completing."); },
+    });
+    setCalendarStatus("loading");
+    googleTokenClient.current.requestAccessToken({prompt: calendarStatus === "ready" ? "" : "consent"});
+  };
   useEffect(() => {
     if (!city.trim()) { setWeather(null); setWeatherStatus("error"); setWeatherError("Enter a city to see its weather."); return; }
     const controller = new AbortController();
@@ -72,6 +156,17 @@ export default function App() {
     return () => { window.clearTimeout(timeout); controller.abort(); };
   }, [city, unit]);
   const time = now.toLocaleTimeString([], {hour:"numeric", minute:"2-digit", hour12: clockMode === "12"}), sec = now.toLocaleTimeString([], {second:"2-digit"}), date = now.toLocaleDateString([], {weekday:"long",month:"short",day:"numeric"}), timer = `${String(Math.floor(left/60)).padStart(2,"0")}:${String(left%60).padStart(2,"0")}`;
+  const calendarDays = [0,1,2].map(offset => {
+    const day = new Date(now);
+    day.setHours(0,0,0,0);
+    day.setDate(day.getDate() + offset);
+    return {
+      key: localDateKey(day),
+      label: day.toLocaleDateString([], {weekday:"long"}),
+      dateLabel: day.toLocaleDateString([], {month:"short",day:"numeric"}),
+      events: calendarEvents.filter(event => eventDateKey(event) === localDateKey(day)),
+    };
+  });
   const setDuration = value => { setMinutes(value); setLeft(value * 60); setRunning(false); };
   const remove = id => setVisible(current => current.filter(item => item !== id));
   const addTask = event => { event.preventDefault(); if (!taskText.trim()) return; setTasks(current => [...current, {id:Date.now(),text:taskText.trim(),done:false}]); setTaskText(""); };
@@ -100,14 +195,14 @@ export default function App() {
       base.sm = [{i:"clock",x:0,y:0,w:6,h:3},{i:"pomodoro",x:0,y:3,w:6,h:4},{i:"tasks",x:0,y:7,w:6,h:6},{i:"quote",x:0,y:13,w:6,h:3},{i:"weather",x:0,y:16,w:6,h:4}];
     } else if (preset === "balanced") {
       setVisible(defaultVisible);
-      base.lg = [{i:"clock",x:0,y:0,w:3,h:3},{i:"quote",x:3,y:0,w:5,h:3},{i:"tasks",x:8,y:0,w:4,h:8},{i:"pomodoro",x:0,y:3,w:5,h:8},{i:"weather",x:5,y:3,w:3,h:8},{i:"links",x:8,y:8,w:4,h:3}];
-      base.md = [{i:"clock",x:0,y:0,w:3,h:3},{i:"quote",x:3,y:0,w:4,h:3},{i:"tasks",x:7,y:0,w:3,h:8},{i:"pomodoro",x:0,y:3,w:4,h:8},{i:"weather",x:4,y:3,w:3,h:8},{i:"links",x:7,y:8,w:3,h:3}];
-      base.sm = [{i:"clock",x:0,y:0,w:6,h:3},{i:"quote",x:0,y:3,w:6,h:3},{i:"tasks",x:0,y:6,w:6,h:6},{i:"pomodoro",x:0,y:12,w:6,h:6},{i:"weather",x:0,y:18,w:6,h:5},{i:"links",x:0,y:23,w:6,h:4}];
+      base.lg = structuredClone(initialLayouts.lg);
+      base.md = structuredClone(initialLayouts.md);
+      base.sm = structuredClone(initialLayouts.sm);
     } else if (preset === "all") {
       setVisible(ids);
-      base.lg = [{i:"clock",x:0,y:0,w:3,h:3},{i:"quote",x:3,y:0,w:5,h:3},{i:"weather",x:8,y:0,w:4,h:6},{i:"tasks",x:0,y:3,w:4,h:10},{i:"links",x:4,y:3,w:4,h:10},{i:"pomodoro",x:8,y:6,w:4,h:7},{i:"habits",x:0,y:13,w:6,h:5},{i:"notes",x:6,y:13,w:6,h:5}];
-      base.md = [{i:"clock",x:0,y:0,w:3,h:3},{i:"quote",x:3,y:0,w:4,h:3},{i:"weather",x:7,y:0,w:3,h:6},{i:"tasks",x:0,y:3,w:3,h:10},{i:"links",x:3,y:3,w:4,h:10},{i:"pomodoro",x:7,y:6,w:3,h:7},{i:"habits",x:0,y:13,w:5,h:5},{i:"notes",x:5,y:13,w:5,h:5}];
-      base.sm = [{i:"clock",x:0,y:0,w:6,h:3},{i:"quote",x:0,y:3,w:6,h:3},{i:"weather",x:0,y:6,w:6,h:5},{i:"tasks",x:0,y:11,w:6,h:7},{i:"links",x:0,y:18,w:6,h:7},{i:"pomodoro",x:0,y:25,w:6,h:6},{i:"habits",x:0,y:31,w:6,h:5},{i:"notes",x:0,y:36,w:6,h:5}];
+      base.lg = [{i:"clock",x:0,y:0,w:3,h:3},{i:"quote",x:3,y:0,w:5,h:3},{i:"weather",x:8,y:0,w:4,h:6},{i:"tasks",x:0,y:3,w:4,h:10},{i:"links",x:4,y:3,w:4,h:10},{i:"pomodoro",x:8,y:6,w:4,h:7},{i:"habits",x:0,y:13,w:6,h:5},{i:"notes",x:6,y:13,w:6,h:5},{i:"calendar",x:0,y:18,w:6,h:6}];
+      base.md = [{i:"clock",x:0,y:0,w:3,h:3},{i:"quote",x:3,y:0,w:4,h:3},{i:"weather",x:7,y:0,w:3,h:6},{i:"tasks",x:0,y:3,w:3,h:10},{i:"links",x:3,y:3,w:4,h:10},{i:"pomodoro",x:7,y:6,w:3,h:7},{i:"habits",x:0,y:13,w:5,h:5},{i:"notes",x:5,y:13,w:5,h:5},{i:"calendar",x:0,y:18,w:10,h:6}];
+      base.sm = [{i:"clock",x:0,y:0,w:6,h:3},{i:"quote",x:0,y:3,w:6,h:3},{i:"weather",x:0,y:6,w:6,h:5},{i:"tasks",x:0,y:11,w:6,h:7},{i:"links",x:0,y:18,w:6,h:7},{i:"pomodoro",x:0,y:25,w:6,h:6},{i:"habits",x:0,y:31,w:6,h:5},{i:"notes",x:0,y:36,w:6,h:5},{i:"calendar",x:0,y:41,w:6,h:6}];
     } else {
       setVisible(defaultVisible);
     }
@@ -160,9 +255,10 @@ export default function App() {
         {visible.includes("links") && <div key="links"><Frame id="links" editing={editing} remove={remove}><p className="label">Quick links</p><div className="links">{links.map((link, index) => <a key={`${link.name}-${index}`} href={link.url || "#dash"} target="_blank" rel="noreferrer"><i style={{background:link.color}}>{link.name.slice(0,2).toUpperCase()}</i>{link.name || "Link"}</a>)}</div><button className="shortcut" type="button" onClick={() => setSettings(true)}><Plus size={16}/>Customize shortcuts</button></Frame></div>}
         {visible.includes("habits") && <div key="habits"><Frame id="habits" editing={editing} remove={remove}><p className="label">Habit tracker</p><div className="habit-list">{habits.map(habit => <div className="habit" key={habit.id}><div className="habit-name">{habit.name}<span>{habit.days.filter(Boolean).length}/7</span></div><div className="habit-days">{["M","T","W","T","F","S","S"].map((day,index) => <button className={habit.days[index] ? "complete" : ""} type="button" key={index} aria-label={`${habit.name}, day ${index + 1}`} onClick={() => toggleHabitDay(habit.id,index)}>{habit.days[index] ? <Check size={12}/> : day}</button>)}</div><IconButton label={`Remove habit ${habit.name}`} className="remove-habit" onClick={() => setHabits(current => current.filter(item => item.id !== habit.id))}><X size={13}/></IconButton></div>)}</div><form className="habit-form" onSubmit={addHabit}><input aria-label="New habit" placeholder="Add a habit..." value={habitText} onChange={event => setHabitText(event.target.value)}/><button type="submit" aria-label="Add habit"><Plus size={16}/></button></form></Frame></div>}
         {visible.includes("notes") && <div key="notes"><Frame id="notes" editing={editing} remove={remove}><p className="label">Scratchpad</p><textarea className="scratchpad" aria-label="Scratchpad notes" placeholder="Jot down a thought..." value={note} onChange={event => setNote(event.target.value)}/></Frame></div>}
+        {visible.includes("calendar") && <div key="calendar"><Frame id="calendar" editing={editing} remove={remove}><div className="calendar-widget-head"><div><p className="label">Google Calendar</p><h2>Next three days</h2></div><CalendarDays size={22}/></div>{!googleClientId ? <div className="calendar-connect-state"><p>Add a Google OAuth web client ID to connect your calendar.</p><small>Set VITE_GOOGLE_CLIENT_ID and restart Vite.</small></div> : calendarStatus === "ready" ? <><div className="calendar-days">{calendarDays.map(day => <section className="calendar-day" key={day.key}><header><b>{day.label}</b><span>{day.dateLabel}</span></header>{day.events.length ? <div className="calendar-day-events">{day.events.map(event => { const allDay = Boolean(event.start?.date); const rawStart = event.start?.dateTime || `${event.start?.date}T12:00:00`; const startDate = new Date(rawStart); return <article className="calendar-event" key={`${event.calendarId || event.calendarName}-${event.id}`}><time>{allDay ? "All day" : startDate.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}</time><div><strong>{event.summary || "Untitled event"}</strong>{event.calendarName && <small>{event.calendarName}</small>}{event.location && <small>{event.location}</small>}</div></article>; })}</div> : <p className="calendar-empty">No events</p>}</section>)}</div><button className="calendar-refresh" type="button" onClick={connectGoogleCalendar} disabled={calendarStatus === "loading"}><RotateCcw size={15}/> Refresh</button></> : <div className="calendar-connect-state">{calendarStatus === "error" && <p className="calendar-error" role="status">{calendarError}</p>}<p>Connect your Google account to see upcoming events.</p><button className="calendar-connect" type="button" onClick={connectGoogleCalendar} disabled={!googleReady || calendarStatus === "loading"}>{calendarStatus === "loading" ? "Connecting…" : googleReady ? "Connect Google Calendar" : "Loading Google sign-in…"}</button>{calendarError && calendarStatus === "error" && <small>Check that this site’s origin is authorized in your Google OAuth client.</small>}</div>}</Frame></div>}
       </Grid>{editing && <p className="editing-note"><GripVertical size={16}/> Drag cards to rearrange. Pull the lower-right corner to resize.</p>}</section>
-    {presets && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setPresets(false); }}><section className="preset-modal" role="dialog" aria-modal="true" aria-labelledby="preset-title"><div className="panel-head"><div><p>YOUR DASHBOARD</p><h2 id="preset-title">Layouts</h2></div><IconButton label="Close layouts" onClick={() => setPresets(false)}><X size={19}/></IconButton></div><h3 className="layout-section-title">Start with a preset</h3><div className="preset-options">{[["balanced","Balanced","Clock, quote, and tasks above timer, weather, and links."],["focus","Focus mode","Tall tasks at right; clock and timer above weather at left, with quote below."],["minimal","Minimal","A centered clock, weather, quote, and links."],["all","Everything","All eight widgets in a three-row workspace."]].map(([id,title,description]) => <button type="button" key={id} onClick={() => applyPreset(id)}><span className={`preset-preview ${id}`}><i/><i/><i/><i/></span><span><b>{title}</b><small>{description}</small></span></button>)}</div><h3 className="layout-section-title saved-title">Saved layouts</h3>{savedLayouts.length ? <div className="saved-layout-list">{savedLayouts.map(item => <div className="saved-layout" key={item.id}><button type="button" className="saved-layout-load" onClick={() => applySavedLayout(item)}><LayoutDashboard size={18}/><span>{item.name}<small>{item.visible.length} widgets</small></span></button><IconButton label={`Delete ${item.name}`} onClick={() => setSavedLayouts(current => current.filter(layout => layout.id !== item.id))}><Trash2 size={16}/></IconButton></div>)}</div> : <p className="empty-layouts">Save your current widget arrangement to reuse it here.</p>}<form className="save-layout-form" onSubmit={saveCurrentLayout}><input aria-label="Layout name" maxLength={32} placeholder="Name this layout" value={layoutName} onChange={event => setLayoutName(event.target.value)}/><button type="submit" disabled={!layoutName.trim()}><Plus size={16}/>Save current</button></form></section></div>}
-    {library && <aside className="panel"><div className="panel-head"><div><p>WORKSPACE</p><h2>Add a widget</h2></div><IconButton label="Close widget library" onClick={() => setLibrary(false)}><X size={19}/></IconButton></div><div className="library">{ids.map(id => <button className="library-item" type="button" key={id} disabled={visible.includes(id)} onClick={() => addWidget(id)}><span>{id === "weather" ? <CloudSun size={19}/> : id === "quote" ? <Quote size={19}/> : id === "pomodoro" ? <TimerReset size={19}/> : id === "habits" ? <CalendarDays size={19}/> : id === "notes" ? <NotebookPen size={19}/> : <LayoutDashboard size={19}/>}</span><div><b>{info[id][0]}</b><small>{visible.includes(id) ? "Already on your board" : info[id][1]}</small></div><Plus size={18}/></button>)}</div></aside>}
+    {presets && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setPresets(false); }}><section className="preset-modal" role="dialog" aria-modal="true" aria-labelledby="preset-title"><div className="panel-head"><div><p>YOUR DASHBOARD</p><h2 id="preset-title">Layouts</h2></div><IconButton label="Close layouts" onClick={() => setPresets(false)}><X size={19}/></IconButton></div><h3 className="layout-section-title">Start with a preset</h3><div className="preset-options">{[["balanced","Balanced","Clock, quote, and tasks above timer, weather, and links."],["focus","Focus mode","Tall tasks at right; clock and timer above weather at left, with quote below."],["minimal","Minimal","A centered clock, weather, quote, and links."],["all","Everything","All nine widgets in a three-row workspace."]].map(([id,title,description]) => <button type="button" key={id} onClick={() => applyPreset(id)}><span className={`preset-preview ${id}`}><i/><i/><i/><i/></span><span><b>{title}</b><small>{description}</small></span></button>)}</div><h3 className="layout-section-title saved-title">Saved layouts</h3>{savedLayouts.length ? <div className="saved-layout-list">{savedLayouts.map(item => <div className="saved-layout" key={item.id}><button type="button" className="saved-layout-load" onClick={() => applySavedLayout(item)}><LayoutDashboard size={18}/><span>{item.name}<small>{item.visible.length} widgets</small></span></button><IconButton label={`Delete ${item.name}`} onClick={() => setSavedLayouts(current => current.filter(layout => layout.id !== item.id))}><Trash2 size={16}/></IconButton></div>)}</div> : <p className="empty-layouts">Save your current widget arrangement to reuse it here.</p>}<form className="save-layout-form" onSubmit={saveCurrentLayout}><input aria-label="Layout name" maxLength={32} placeholder="Name this layout" value={layoutName} onChange={event => setLayoutName(event.target.value)}/><button type="submit" disabled={!layoutName.trim()}><Plus size={16}/>Save current</button></form></section></div>}
+    {library && <aside className="panel"><div className="panel-head"><div><p>WORKSPACE</p><h2>Add a widget</h2></div><IconButton label="Close widget library" onClick={() => setLibrary(false)}><X size={19}/></IconButton></div><div className="library">{ids.map(id => <button className="library-item" type="button" key={id} disabled={visible.includes(id)} onClick={() => addWidget(id)}><span>{id === "weather" ? <CloudSun size={19}/> : id === "quote" ? <Quote size={19}/> : id === "pomodoro" ? <TimerReset size={19}/> : id === "habits" || id === "calendar" ? <CalendarDays size={19}/> : id === "notes" ? <NotebookPen size={19}/> : <LayoutDashboard size={19}/>}</span><div><b>{info[id][0]}</b><small>{visible.includes(id) ? "Already on your board" : info[id][1]}</small></div><Plus size={18}/></button>)}</div></aside>}
     {settings && <aside className="panel"><div className="panel-head"><div><p>PREFERENCES</p><h2>Make it yours</h2></div><IconButton label="Close settings" onClick={() => setSettings(false)}><X size={19}/></IconButton></div><nav className="settings-nav" aria-label="Settings categories"><button type="button" onClick={() => jumpToSetting("Workspace identity")}>Workspace</button><button type="button" onClick={() => jumpToSetting("Wallpaper")}>Appearance</button><button type="button" onClick={() => jumpToSetting("Clock & weather")}>Widgets</button><button type="button" onClick={() => jumpToSetting("Backup & restore")}>Data</button></nav>
       <section className="setting" id="settings-workspace"><span>Workspace identity</span><label htmlFor="workspace-name">Workspace name</label><input id="workspace-name" value={workspace} onChange={event => setWorkspace(event.target.value)} /><label htmlFor="person-name">Your name</label><input id="person-name" value={name} onChange={event => setName(event.target.value)} /></section>
       <section className="setting"><span>Typeface</span>{[["sans","Modern sans"],["serif","Editorial serif"],["mono","Focus mono"],["rounded","Rounded"],["humanist","Humanist"]].map(([id,label]) => <button className={font === id ? "selected" : ""} type="button" key={id} onClick={() => setFont(id)}><Type size={17}/>{label}</button>)}</section>
