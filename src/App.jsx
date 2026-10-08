@@ -7,7 +7,7 @@ import SchoolPeriodsWidget from "./SchoolPeriodsWidget";
 const Grid = WidthProvider(Responsive);
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 const ids = ["clock", "weather", "quote", "tasks", "pomodoro", "links", "habits", "notes", "calendar", "school-periods"];
-const defaultVisible = [...ids.slice(0, 6), "calendar", "school-periods"];
+const defaultVisible = [...ids.slice(0, 6), "calendar"];
 const info = {
   clock: ["Clock & date", "A live view of your day"], weather: ["Weather", "A quick local forecast"],
   quote: ["Daily quote", "A small thought for the day"], tasks: ["Task list", "Keep priorities nearby"],
@@ -82,10 +82,6 @@ export default function App() {
     if (localStorage.getItem("dash-calendar-default-v1") !== "true") {
       localStorage.setItem("dash-calendar-default-v1", "true");
       next = [...new Set([...next, "calendar"])]
-    }
-    if (localStorage.getItem("dash-school-periods-default-v1") !== "true") {
-      localStorage.setItem("dash-school-periods-default-v1", "true");
-      next = [...new Set([...next, "school-periods"])]
     }
     return next;
   });
