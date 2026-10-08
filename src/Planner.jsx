@@ -24,15 +24,7 @@ const PALETTES = [
 
 const dateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
-export default function PlannerDashboard({ name = "Aiden" }) {
-  const [tasks, setTasks] = useState(() => {
-    const saved = localStorage.getItem('planner_tasks');
-    return saved ? JSON.parse(saved) : [
-      { id: '1', title: 'Flute Practice', time: '06:30', duration: 45, date: dateKey(new Date()), categoryId: 'personal', completed: false, recurring: 'daily' },
-      { id: '2', title: 'Membean Vocabulary', time: '08:00', duration: 30, date: dateKey(new Date()), categoryId: 'general', completed: false, recurring: 'none' },
-      { id: '3', title: 'HT2 Quizlet Flashcards', time: '09:00', duration: 60, date: dateKey(new Date()), categoryId: 'work', completed: true, recurring: 'none' },
-    ];
-  });
+export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
 
   const [categories, setCategories] = useState(() => {
     const saved = localStorage.getItem('planner_categories');
@@ -49,11 +41,6 @@ export default function PlannerDashboard({ name = "Aiden" }) {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [quickTaskTitle, setQuickTaskTitle] = useState('');
-
-  // Save to LocalStorage
-  useEffect(() => {
-    localStorage.setItem('planner_tasks', JSON.stringify(tasks));
-  }, [tasks]);
 
   useEffect(() => {
     localStorage.setItem('planner_categories', JSON.stringify(categories));
@@ -82,14 +69,18 @@ export default function PlannerDashboard({ name = "Aiden" }) {
   // Task Actions
   const handleSaveTask = (taskData) => {
     if (editingTask) {
-      setTasks(tasks.map(t => t.id === editingTask.id ? { ...t, ...taskData } : t));
+      setTasks(current => current.map(t => t.id === editingTask.id ? { ...t, ...taskData, title: taskData.title, text: taskData.title } : t));
     } else {
       const newTask = {
         id: Date.now().toString(),
         ...taskData,
-        completed: false
+        title: taskData.title,
+        text: taskData.title,
+        date: dateKey(currentDate),
+        completed: false,
+        done: false
       };
-      setTasks([...tasks, newTask]);
+      setTasks(current => [...current, newTask]);
     }
     setIsTaskModalOpen(false);
     setEditingTask(null);
@@ -101,27 +92,29 @@ export default function PlannerDashboard({ name = "Aiden" }) {
     const newTask = {
       id: Date.now().toString(),
       title: quickTaskTitle.trim(),
+      text: quickTaskTitle.trim(),
       time: null,
       duration: 30,
       date: dateKey(currentDate),
       categoryId: 'general',
       completed: false,
+      done: false,
       recurring: 'none'
     };
-    setTasks([...tasks, newTask]);
+    setTasks(current => [...current, newTask]);
     setQuickTaskTitle('');
   };
 
   const toggleTaskComplete = (id) => {
-    setTasks(tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+    setTasks(current => current.map(t => t.id === id ? { ...t, completed: !t.completed, done: !t.completed } : t));
   };
 
   const deleteTask = (id) => {
-    setTasks(tasks.filter(t => t.id !== id));
+    setTasks(current => current.filter(t => t.id !== id));
   };
 
   const updateTaskCategory = (taskId, categoryId) => {
-    setTasks(tasks.map(t => t.id === taskId ? { ...t, categoryId } : t));
+    setTasks(current => current.map(t => t.id === taskId ? { ...t, categoryId } : t));
   };
 
   // Category Actions
@@ -131,14 +124,14 @@ export default function PlannerDashboard({ name = "Aiden" }) {
       name,
       ...palette
     };
-    setCategories([...categories, newCat]);
+    setCategories(current => [...current, newCat]);
   };
 
   const handleDeleteCategory = (catId) => {
     if (catId === 'general') return; // Cannot delete General
     // Reassign affected tasks to 'general'
-    setTasks(tasks.map(t => t.categoryId === catId ? { ...t, categoryId: 'general' } : t));
-    setCategories(categories.filter(c => c.id !== catId));
+    setTasks(current => current.map(t => t.categoryId === catId ? { ...t, categoryId: 'general' } : t));
+    setCategories(current => current.filter(c => c.id !== catId));
   };
 
   // Drag and Drop
@@ -151,8 +144,8 @@ export default function PlannerDashboard({ name = "Aiden" }) {
     const taskId = e.dataTransfer.getData('text/plain');
     if (!taskId) return;
 
-    setTasks(tasks.map(t => {
-      if (t.id === taskId) {
+    setTasks(current => current.map(t => {
+      if (String(t.id) === taskId) {
         return {
           ...t,
           date: targetDate,
@@ -208,7 +201,7 @@ export default function PlannerDashboard({ name = "Aiden" }) {
         </header>
 
         {/* Top Cards Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="planner-summary grid grid-cols-1 md:grid-cols-3 gap-6">
           
           {/* Clock & Date Widget */}
           <div className="glass-card rounded-2xl p-6 text-slate-800 flex flex-col justify-between">
@@ -339,7 +332,7 @@ export default function PlannerDashboard({ name = "Aiden" }) {
           </div>
 
           {/* Calendar Views */}
-          <div className="pt-4 overflow-x-auto">
+          <div className="planner-calendar-scroll pt-4 overflow-auto">
             {viewMode === 'day' && (
               <DayView 
                 currentDate={currentDate} 
@@ -407,7 +400,7 @@ function DayView({ currentDate, hours, tasks, categoryMap, categories, onDropSlo
   const dateStr = dateKey(currentDate);
 
   return (
-    <div className="min-w-[600px]">
+    <div className="planner-day-view">
       <div className="grid grid-cols-[80px_1fr] border-b border-slate-200 pb-2 mb-2 font-bold text-slate-600 text-sm">
         <div>Time</div>
         <div>{currentDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
@@ -465,7 +458,7 @@ function WeekView({ currentDate, hours, tasks, categoryMap, categories, onDropSl
   }, [currentDate]);
 
   return (
-    <div className="min-w-[800px]">
+    <div className="planner-week-view">
       {/* Week Header */}
       <div className="grid grid-cols-[70px_repeat(7,1fr)] border-b border-slate-200 pb-3 mb-2 text-center">
         <div className="text-xs font-bold text-slate-400 self-end">Time</div>
@@ -543,7 +536,7 @@ function MonthView({ currentDate, tasks, categoryMap }) {
   }, [year, month, daysInMonth, firstDayIndex]);
 
   return (
-    <div>
+    <div className="planner-month-view">
       <div className="grid grid-cols-7 border-b border-slate-200 pb-2 mb-2 text-center text-xs font-bold text-slate-400 uppercase">
         <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
       </div>

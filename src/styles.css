@@ -89,3 +89,21 @@ button, input { font: inherit; } button { cursor: pointer; }
 
 .planner-page .bg-indigo-600 { background-color: var(--accent); }
 .planner-page .hover\:bg-indigo-500:hover { background-color: color-mix(in srgb, var(--accent) 86%, #172034); }
+.stage.planner-stage { padding-top: 18px; padding-bottom: 18px; }
+.planner-page { width: 100%; max-width: 80rem; margin: 0 auto; padding: 0 0 10px; }
+.planner-page .max-w-7xl { max-width: 100%; }
+.planner-page .max-w-7xl > :not([hidden]) ~ :not([hidden]) { margin-top: 14px; }
+.planner-page .glass-card { min-width: 0; padding: 16px; }
+.planner-page .planner-summary { gap: 14px; }
+.planner-calendar-scroll { max-height: clamp(190px, calc(100vh - 490px), 52vh); min-height: 0; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.planner-day-view,.planner-month-view { width: 100%; min-width: 0; }
+.planner-week-view { width: 100%; min-width: 780px; }
+.planner-day-view .group { min-height: 48px; }
+.planner-week-view .divide-y > .grid { min-height: 48px; }
+.planner-month-view > .grid:nth-child(2) > div { min-height: 58px; overflow: hidden; }
+@media(max-width:720px) {
+  .stage.planner-stage { padding: 14px 12px; }
+  .planner-page .glass-card { padding: 13px; }
+  .planner-calendar-scroll { max-height: clamp(190px, calc(100vh - 460px), 48vh); }
+  .planner-week-view { min-width: 680px; }
+}
