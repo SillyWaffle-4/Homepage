@@ -23,6 +23,10 @@ const PALETTES = [
 ];
 
 const dateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+const scheduleStartHour = times => {
+  const hour = Number(times?.split('-')[0]?.split(':')[0]);
+  return hour > 0 && hour < 6 ? hour + 12 : hour;
+};
 
 export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
 
@@ -35,6 +39,7 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [schoolSchedules, setSchoolSchedules] = useState({});
 
   // Modal States
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -56,6 +61,46 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
   const categoryMap = useMemo(() => {
     return categories.reduce((acc, cat) => ({ ...acc, [cat.id]: cat }), {});
   }, [categories]);
+
+  const scheduleDates = useMemo(() => {
+    if (viewMode === 'day') return [dateKey(currentDate)];
+    if (viewMode === 'week') {
+      const start = new Date(currentDate);
+      const day = start.getDay();
+      start.setDate(start.getDate() - day + (day === 0 ? -6 : 1));
+      return Array.from({ length: 7 }, (_, index) => {
+        const date = new Date(start);
+        date.setDate(start.getDate() + index);
+        return dateKey(date);
+      });
+    }
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    return Array.from({ length: new Date(year, month + 1, 0).getDate() }, (_, index) => dateKey(new Date(year, month, index + 1)));
+  }, [currentDate, viewMode]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const missingDates = scheduleDates.filter(date => !schoolSchedules[date]);
+    if (!missingDates.length) return () => controller.abort();
+
+    Promise.all(missingDates.map(async date => {
+      try {
+        const response = await fetch(`https://four11.eastsideprep.org/epsnet/schedule_for_date?date=${date}`, { signal: controller.signal });
+        if (!response.ok) return null;
+        const schedule = await response.json();
+        return schedule?.date && schedule?.schedule_day ? [date, schedule] : null;
+      } catch (error) {
+        if (error.name !== 'AbortError') return null;
+        return null;
+      }
+    })).then(results => {
+      const received = Object.fromEntries(results.filter(Boolean));
+      if (Object.keys(received).length) setSchoolSchedules(current => ({ ...current, ...received }));
+    });
+
+    return () => controller.abort();
+  }, [scheduleDates, schoolSchedules]);
 
   // Date Nav
   const navigateDate = (amount) => {
@@ -121,8 +166,8 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
   const handleAddCategory = (name, palette) => {
     const newCat = {
       id: `cat_${Date.now()}`,
-      name,
-      ...palette
+      ...palette,
+      name
     };
     setCategories(current => [...current, newCat]);
   };
@@ -132,6 +177,12 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
     // Reassign affected tasks to 'general'
     setTasks(current => current.map(t => t.categoryId === catId ? { ...t, categoryId: 'general' } : t));
     setCategories(current => current.filter(c => c.id !== catId));
+  };
+
+  const handleRenameCategory = (catId, name) => {
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
+    setCategories(current => current.map(category => category.id === catId ? { ...category, name: trimmedName } : category));
   };
 
   // Drag and Drop
@@ -338,6 +389,7 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
                 currentDate={currentDate} 
                 hours={hours} 
                 tasks={filteredTasks} 
+                schoolSchedules={schoolSchedules}
                 categoryMap={categoryMap}
                 categories={categories}
                 onDropSlot={handleDropSlot}
@@ -351,6 +403,7 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
                 currentDate={currentDate} 
                 hours={hours} 
                 tasks={filteredTasks} 
+                schoolSchedules={schoolSchedules}
                 categoryMap={categoryMap}
                 categories={categories}
                 onDropSlot={handleDropSlot}
@@ -363,6 +416,7 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
               <MonthView 
                 currentDate={currentDate} 
                 tasks={filteredTasks} 
+                schoolSchedules={schoolSchedules}
                 categoryMap={categoryMap}
               />
             )}
@@ -387,6 +441,7 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
           onClose={() => setIsCategoryModalOpen(false)}
           onAdd={handleAddCategory}
           onDelete={handleDeleteCategory}
+          onRename={handleRenameCategory}
         />
       )}
     </div>
@@ -396,28 +451,47 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
 // ----------------------------------------------------------------------
 // Day View Component
 // ----------------------------------------------------------------------
-function DayView({ currentDate, hours, tasks, categoryMap, categories, onDropSlot, onToggleComplete, onDeleteTask, onUpdateCategory }) {
+function SchoolDayBadge({ schedule, compact = false }) {
+  if (!schedule?.schedule_day) return null;
+  const color = schedule.color ? `#${schedule.color.replace(/^#/, '')}` : '#6658e8';
+  return <span
+    className={`school-day-badge ${compact ? 'compact' : ''}`}
+    style={{ '--school-color': color, '--school-tint': `color-mix(in srgb, ${color} 18%, white)` }}
+    title={schedule.activity_day || schedule.schedule_day}
+  >{schedule.schedule_day}</span>;
+}
+
+function SchoolPeriod({ period, schedule }) {
+  const color = schedule?.color ? `#${schedule.color.replace(/^#/, '')}` : '#6658e8';
+  return <div className="school-period" style={{ '--school-color': color, '--school-tint': `color-mix(in srgb, ${color} 15%, white)` }}>
+    <time>{period.times}</time><strong>{period.period}</strong>
+  </div>;
+}
+
+function DayView({ currentDate, hours, tasks, schoolSchedules, categoryMap, categories, onDropSlot, onToggleComplete, onDeleteTask, onUpdateCategory }) {
   const dateStr = dateKey(currentDate);
+  const schoolSchedule = schoolSchedules[dateStr];
 
   return (
     <div className="planner-day-view">
       <div className="grid grid-cols-[80px_1fr] border-b border-slate-200 pb-2 mb-2 font-bold text-slate-600 text-sm">
         <div>Time</div>
-        <div>{currentDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
+        <div className="school-day-heading">{currentDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}<SchoolDayBadge schedule={schoolSchedule} /></div>
       </div>
 
       <div className="divide-y divide-slate-100">
         {hours.map(hour => {
           const hourTasks = tasks.filter(t => t.date === dateStr && t.time && t.time.startsWith(hour.slice(0, 2)));
           return (
-            <div 
-              key={hour} 
+            <div
+              key={hour}
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => onDropSlot(e, dateStr, hour)}
               className="grid grid-cols-[80px_1fr] min-h-[64px] hover:bg-slate-50/50 transition relative group"
             >
               <div className="text-xs font-semibold text-slate-400 py-2">{hour}</div>
               <div className="p-1 flex flex-col gap-1.5">
+                {(schoolSchedule?.periods || []).filter(period => scheduleStartHour(period.times) === Number(hour.slice(0, 2))).map((period, index) => <SchoolPeriod key={`${period.period}-${index}`} period={period} schedule={schoolSchedule} />)}
                 {hourTasks.map(task => (
                   <TaskCard 
                     key={task.id} 
@@ -441,7 +515,7 @@ function DayView({ currentDate, hours, tasks, categoryMap, categories, onDropSlo
 // ----------------------------------------------------------------------
 // Week View Component
 // ----------------------------------------------------------------------
-function WeekView({ currentDate, hours, tasks, categoryMap, categories, onDropSlot, onToggleComplete, onDeleteTask, onUpdateCategory }) {
+function WeekView({ currentDate, hours, tasks, schoolSchedules, categoryMap, categories, onDropSlot, onToggleComplete, onDeleteTask, onUpdateCategory }) {
   const weekDays = useMemo(() => {
     const start = new Date(currentDate);
     const day = start.getDay();
@@ -474,6 +548,7 @@ function WeekView({ currentDate, hours, tasks, categoryMap, categories, onDropSl
               }`}>
                 {day.getDate()}
               </span>
+              <SchoolDayBadge schedule={schoolSchedules[dateKey(day)]} />
             </div>
           );
         })}
@@ -487,6 +562,8 @@ function WeekView({ currentDate, hours, tasks, categoryMap, categories, onDropSl
             {weekDays.map(day => {
               const dateStr = dateKey(day);
               const cellTasks = tasks.filter(t => t.date === dateStr && t.time && t.time.startsWith(hour.slice(0, 2)));
+              const schoolSchedule = schoolSchedules[dateStr];
+              const periodEvents = (schoolSchedule?.periods || []).filter(period => scheduleStartHour(period.times) === Number(hour.slice(0, 2)));
 
               return (
                 <div
@@ -495,6 +572,7 @@ function WeekView({ currentDate, hours, tasks, categoryMap, categories, onDropSl
                   onDrop={(e) => onDropSlot(e, dateStr, hour)}
                   className="border-l border-slate-100/80 p-1 flex flex-col gap-1 hover:bg-indigo-50/20 transition"
                 >
+                  {periodEvents.map((period, index) => <SchoolPeriod key={`${period.period}-${index}`} period={period} schedule={schoolSchedule} />)}
                   {cellTasks.map(task => (
                     <TaskCard 
                       key={task.id} 
@@ -519,7 +597,7 @@ function WeekView({ currentDate, hours, tasks, categoryMap, categories, onDropSl
 // ----------------------------------------------------------------------
 // Month View Component
 // ----------------------------------------------------------------------
-function MonthView({ currentDate, tasks, categoryMap }) {
+function MonthView({ currentDate, tasks, schoolSchedules, categoryMap }) {
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
 
@@ -546,14 +624,14 @@ function MonthView({ currentDate, tasks, categoryMap }) {
           
           const dateStr = dateKey(day);
           const dayTasks = tasks.filter(t => t.date === dateStr);
+          const schoolSchedule = schoolSchedules[dateStr];
           const isToday = new Date().toDateString() === day.toDateString();
 
           return (
             <div key={dateStr} className={`min-h-[90px] border border-slate-200/60 rounded-xl p-1.5 flex flex-col justify-between ${isToday ? 'bg-indigo-50/40 border-indigo-300' : 'bg-white/50'}`}>
-              <div className="flex justify-between items-center">
-                <span className={`text-xs font-bold ${isToday ? 'text-indigo-600' : 'text-slate-700'}`}>
-                  {day.getDate()}
-                </span>
+              <div className="flex justify-between items-center gap-1">
+                <span className={`text-xs font-bold ${isToday ? 'text-indigo-600' : 'text-slate-700'}`}>{day.getDate()}</span>
+                <SchoolDayBadge schedule={schoolSchedule} compact />
                 {dayTasks.length > 0 && (
                   <span className="text-[10px] font-semibold bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full">
                     {dayTasks.length}
@@ -734,7 +812,7 @@ function TaskModal({ task, categories, onClose, onSave }) {
 // ----------------------------------------------------------------------
 // Category Manager Modal (Create & Delete Categories)
 // ----------------------------------------------------------------------
-function CategoryManagerModal({ categories, onClose, onAdd, onDelete }) {
+function CategoryManagerModal({ categories, onClose, onAdd, onDelete, onRename }) {
   const [newCatName, setNewCatName] = useState('');
   const [selectedPalette, setSelectedPalette] = useState(PALETTES[0]);
 
@@ -758,7 +836,14 @@ function CategoryManagerModal({ categories, onClose, onAdd, onDelete }) {
           <label className="block text-xs font-bold text-slate-600 mb-1">Existing Groups</label>
           {categories.map(cat => (
             <div key={cat.id} className={`flex items-center justify-between p-2.5 rounded-xl border ${cat.bg} ${cat.border}`}>
-              <span className={`text-xs font-bold ${cat.text}`}>{cat.name}</span>
+              <input
+                aria-label={`Rename ${cat.name} category`}
+                title="Edit category name"
+                className={`category-name-input text-xs font-bold ${cat.text}`}
+                defaultValue={cat.name}
+                onBlur={(e) => onRename(cat.id, e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+              />
               {cat.id !== 'general' ? (
                 <button
                   onClick={() => onDelete(cat.id)}

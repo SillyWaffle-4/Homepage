@@ -101,6 +101,41 @@ button, input { font: inherit; } button { cursor: pointer; }
 .planner-day-view .group { min-height: 48px; }
 .planner-week-view .divide-y > .grid { min-height: 48px; }
 .planner-month-view > .grid:nth-child(2) > div { min-height: 58px; overflow: hidden; }
+.school-day-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.school-day-badge { display:inline-flex; align-items:center; justify-content:center; max-width:100%; border:1px solid color-mix(in srgb, var(--school-color) 36%, transparent); border-radius:999px; padding:3px 8px; color:color-mix(in srgb, var(--school-color) 72%, #172034); background:var(--school-tint); font-size:.62rem; font-weight:800; line-height:1.15; white-space:nowrap; }
+.school-day-badge.compact { max-width:60px; overflow:hidden; padding:2px 5px; font-size:.5rem; text-overflow:ellipsis; }
+.school-period { display:flex; min-width:0; align-items:center; justify-content:space-between; gap:4px; border-left:3px solid var(--school-color); border-radius:4px; padding:3px 4px; color:#344158; background:var(--school-tint); font-size:.58rem; line-height:1.15; }
+.school-period time { color:color-mix(in srgb, var(--school-color) 76%, #172034); font-size:.53rem; font-weight:750; white-space:nowrap; }
+.school-period strong { min-width:0; overflow:hidden; font-size:.58rem; text-overflow:ellipsis; white-space:nowrap; }
+.widget-school-periods .widget-content { display:flex; flex-direction:column; min-height:0; }
+.school-periods-widget { display:flex; flex:1 1 auto; min-height:0; flex-direction:column; color:#344158; }
+.school-periods-heading { display:flex; flex:0 0 auto; align-items:center; justify-content:space-between; gap:8px; color:var(--school-color); }
+.school-periods-heading h2 { margin:0; color:#26344a; font-size:1.08rem; }
+.school-periods-day { align-self:flex-start; max-width:100%; margin-top:10px; overflow:hidden; text-overflow:ellipsis; }
+.school-current-period { display:flex; flex:0 0 auto; align-items:center; gap:10px; margin-top:11px; border:1px solid color-mix(in srgb,var(--school-color) 22%,white); border-radius:10px; padding:10px; background:color-mix(in srgb,var(--school-tint) 70%,white); }
+.school-current-icon { display:grid; width:36px; height:36px; flex:0 0 36px; place-items:center; border-radius:9px; color:var(--school-color); background:color-mix(in srgb,var(--school-color) 13%,white); }
+.school-current-copy { display:grid; min-width:0; gap:2px; }
+.school-current-copy span,.school-current-copy small { color:#748196; font-size:.68rem; }
+.school-current-copy strong { overflow:hidden; color:#26344a; font-size:1rem; text-overflow:ellipsis; white-space:nowrap; }
+.school-current-copy small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.school-next-arrow { margin-left:auto; color:var(--school-color); }
+.school-periods-activity { margin:7px 0 0; color:#748196; font-size:.68rem; }
+.school-period-list { display:grid; flex:1 1 auto; min-height:0; gap:5px; overflow:auto; margin-top:10px; padding-right:3px; }
+.school-period-row { display:grid; grid-template-columns:8px minmax(0,1fr) auto auto; align-items:center; gap:7px; min-height:30px; border:1px solid transparent; border-radius:7px; padding:5px 7px; background:rgba(224,229,235,.58); }
+.school-period-dot { width:7px; height:7px; border-radius:50%; background:#b5bfcc; }
+.school-period-row strong { overflow:hidden; color:#526075; font-size:.72rem; text-overflow:ellipsis; white-space:nowrap; }
+.school-period-row time { color:#778397; font-size:.65rem; white-space:nowrap; }
+.school-period-row small { border-radius:999px; padding:2px 5px; color:var(--school-color); background:var(--school-tint); font-size:.58rem; font-weight:800; }
+.school-period-row.active { border-color:color-mix(in srgb,var(--school-color) 30%,white); background:color-mix(in srgb,var(--school-tint) 80%,white); }
+.school-period-row.active .school-period-dot { background:var(--school-color); box-shadow:0 0 0 3px color-mix(in srgb,var(--school-color) 18%,white); }
+.school-period-row.active strong { color:#26344a; }
+.school-period-row.past { opacity:.65; }
+.school-periods-state { display:grid; gap:8px; margin:18px 0 0; color:#6f7d8d; font-size:.8rem; line-height:1.45; }
+.school-periods-state p { margin:0; }
+.school-periods-error { color:#a43d46; }
+.school-periods-error button { display:inline-flex; align-items:center; justify-self:start; gap:6px; border:0; border-radius:7px; padding:7px 9px; color:var(--school-color); background:var(--school-tint); font-size:.72rem; font-weight:750; }
+.category-name-input { width:min(100%,260px); min-width:0; border:0; border-radius:5px; padding:3px 5px; background:transparent; outline:0; }
+.category-name-input:focus { background:rgba(255,255,255,.72); box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 35%,transparent); }
 @media(max-width:720px) {
   .stage.planner-stage { padding: 14px 12px; }
   .planner-page .glass-card { padding: 13px; }
