@@ -1,0 +1,821 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  Calendar, Clock, Plus, Trash2, Edit3, Check, X, Tag, Settings,
+  ChevronLeft, ChevronRight, Grid, LayoutList, Layers, RotateCw
+} from 'lucide-react';
+
+// Default Category Palette
+const INITIAL_CATEGORIES = [
+  { id: 'general', name: 'General', bg: 'bg-slate-100', text: 'text-slate-800', border: 'border-slate-300' },
+  { id: 'work', name: 'Work', bg: 'bg-indigo-100', text: 'text-indigo-900', border: 'border-indigo-300' },
+  { id: 'personal', name: 'Personal', bg: 'bg-emerald-100', text: 'text-emerald-900', border: 'border-emerald-300' },
+  { id: 'health', name: 'Health', bg: 'bg-teal-100', text: 'text-teal-900', border: 'border-teal-300' },
+  { id: 'urgent', name: 'Urgent', bg: 'bg-rose-100', text: 'text-rose-900', border: 'border-rose-300' },
+];
+
+const PALETTES = [
+  { name: 'Indigo', bg: 'bg-indigo-100', text: 'text-indigo-900', border: 'border-indigo-300' },
+  { name: 'Emerald', bg: 'bg-emerald-100', text: 'text-emerald-900', border: 'border-emerald-300' },
+  { name: 'Amber', bg: 'bg-amber-100', text: 'text-amber-900', border: 'border-amber-300' },
+  { name: 'Rose', bg: 'bg-rose-100', text: 'text-rose-900', border: 'border-rose-300' },
+  { name: 'Purple', bg: 'bg-purple-100', text: 'text-purple-900', border: 'border-purple-300' },
+  { name: 'Sky', bg: 'bg-sky-100', text: 'text-sky-900', border: 'border-sky-300' },
+];
+
+const dateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+export default function PlannerDashboard({ name = "Aiden" }) {
+  const [tasks, setTasks] = useState(() => {
+    const saved = localStorage.getItem('planner_tasks');
+    return saved ? JSON.parse(saved) : [
+      { id: '1', title: 'Flute Practice', time: '06:30', duration: 45, date: dateKey(new Date()), categoryId: 'personal', completed: false, recurring: 'daily' },
+      { id: '2', title: 'Membean Vocabulary', time: '08:00', duration: 30, date: dateKey(new Date()), categoryId: 'general', completed: false, recurring: 'none' },
+      { id: '3', title: 'HT2 Quizlet Flashcards', time: '09:00', duration: 60, date: dateKey(new Date()), categoryId: 'work', completed: true, recurring: 'none' },
+    ];
+  });
+
+  const [categories, setCategories] = useState(() => {
+    const saved = localStorage.getItem('planner_categories');
+    return saved ? JSON.parse(saved) : INITIAL_CATEGORIES;
+  });
+
+  const [viewMode, setViewMode] = useState('week'); // 'day' | 'week' | 'month'
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  // Modal States
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
+  const [quickTaskTitle, setQuickTaskTitle] = useState('');
+
+  // Save to LocalStorage
+  useEffect(() => {
+    localStorage.setItem('planner_tasks', JSON.stringify(tasks));
+  }, [tasks]);
+
+  useEffect(() => {
+    localStorage.setItem('planner_categories', JSON.stringify(categories));
+  }, [categories]);
+
+  // Clock Ticker
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Category Map Helper
+  const categoryMap = useMemo(() => {
+    return categories.reduce((acc, cat) => ({ ...acc, [cat.id]: cat }), {});
+  }, [categories]);
+
+  // Date Nav
+  const navigateDate = (amount) => {
+    const d = new Date(currentDate);
+    if (viewMode === 'day') d.setDate(d.getDate() + amount);
+    else if (viewMode === 'week') d.setDate(d.getDate() + (amount * 7));
+    else if (viewMode === 'month') d.setMonth(d.getMonth() + amount);
+    setCurrentDate(d);
+  };
+
+  // Task Actions
+  const handleSaveTask = (taskData) => {
+    if (editingTask) {
+      setTasks(tasks.map(t => t.id === editingTask.id ? { ...t, ...taskData } : t));
+    } else {
+      const newTask = {
+        id: Date.now().toString(),
+        ...taskData,
+        completed: false
+      };
+      setTasks([...tasks, newTask]);
+    }
+    setIsTaskModalOpen(false);
+    setEditingTask(null);
+  };
+
+  const handleQuickAdd = (e) => {
+    e.preventDefault();
+    if (!quickTaskTitle.trim()) return;
+    const newTask = {
+      id: Date.now().toString(),
+      title: quickTaskTitle.trim(),
+      time: null,
+      duration: 30,
+      date: dateKey(currentDate),
+      categoryId: 'general',
+      completed: false,
+      recurring: 'none'
+    };
+    setTasks([...tasks, newTask]);
+    setQuickTaskTitle('');
+  };
+
+  const toggleTaskComplete = (id) => {
+    setTasks(tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+  };
+
+  const deleteTask = (id) => {
+    setTasks(tasks.filter(t => t.id !== id));
+  };
+
+  const updateTaskCategory = (taskId, categoryId) => {
+    setTasks(tasks.map(t => t.id === taskId ? { ...t, categoryId } : t));
+  };
+
+  // Category Actions
+  const handleAddCategory = (name, palette) => {
+    const newCat = {
+      id: `cat_${Date.now()}`,
+      name,
+      ...palette
+    };
+    setCategories([...categories, newCat]);
+  };
+
+  const handleDeleteCategory = (catId) => {
+    if (catId === 'general') return; // Cannot delete General
+    // Reassign affected tasks to 'general'
+    setTasks(tasks.map(t => t.categoryId === catId ? { ...t, categoryId: 'general' } : t));
+    setCategories(categories.filter(c => c.id !== catId));
+  };
+
+  // Drag and Drop
+  const handleDragStart = (e, task) => {
+    e.dataTransfer.setData('text/plain', task.id);
+  };
+
+  const handleDropSlot = (e, targetDate, targetTime) => {
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData('text/plain');
+    if (!taskId) return;
+
+    setTasks(tasks.map(t => {
+      if (t.id === taskId) {
+        return {
+          ...t,
+          date: targetDate,
+          time: targetTime
+        };
+      }
+      return t;
+    }));
+  };
+
+  // Hours Grid Range: 6:00 AM to 11:00 PM
+  const hours = useMemo(() => {
+    const list = [];
+    for (let h = 6; h <= 23; h++) {
+      list.push(`${h.toString().padStart(2, '0')}:00`);
+    }
+    return list;
+  }, []);
+
+  const filteredTasks = useMemo(() => {
+    if (selectedCategory === 'all') return tasks;
+    return tasks.filter(t => t.categoryId === selectedCategory);
+  }, [tasks, selectedCategory]);
+
+  return (
+    <div className="planner-page text-slate-800 p-4 sm:p-6 md:p-8">
+      <div className="relative max-w-7xl mx-auto space-y-6">
+        
+        {/* Header Dashboard Banner */}
+        <header className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 text-white">
+          <div>
+            <div className="text-xs uppercase tracking-widest text-indigo-200 font-semibold mb-1">Your Space</div>
+            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}, {name || 'there'}.</h1>
+            <p className="text-indigo-100 text-sm mt-1">
+              {currentDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setIsCategoryModalOpen(true)}
+              className="glass-button px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 hover:bg-white/30 transition"
+            >
+              <Settings className="w-4 h-4" /> Categories
+            </button>
+            <button 
+              onClick={() => { setEditingTask(null); setIsTaskModalOpen(true); }}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-xl text-sm font-medium shadow-lg shadow-indigo-600/30 flex items-center gap-2 transition"
+            >
+              <Plus className="w-4 h-4" /> Add Task
+            </button>
+          </div>
+        </header>
+
+        {/* Top Cards Row */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          
+          {/* Clock & Date Widget */}
+          <div className="glass-card rounded-2xl p-6 text-slate-800 flex flex-col justify-between">
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Clock & Date</div>
+            <div>
+              <div className="text-4xl font-extrabold tracking-tight">
+                {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                <span className="text-lg text-slate-400 font-normal ml-2">
+                  {currentTime.getSeconds().toString().padStart(2, '0')}
+                </span>
+              </div>
+              <div className="text-sm font-medium text-slate-600 mt-1">
+                {currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Add / Unscheduled Tasks Widget */}
+          <div className="glass-card rounded-2xl p-6 text-slate-800 md:col-span-2 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Task List</span>
+              <span className="text-xs font-semibold text-slate-500">
+                {tasks.filter(t => t.completed).length} of {tasks.length} completed
+              </span>
+            </div>
+
+            <form onSubmit={handleQuickAdd} className="flex gap-2 mb-4">
+              <input
+                type="text"
+                placeholder="Add a task..."
+                value={quickTaskTitle}
+                onChange={(e) => setQuickTaskTitle(e.target.value)}
+                className="flex-1 bg-white/70 border border-slate-200/80 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <button 
+                type="submit"
+                className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-sm font-medium transition"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </form>
+
+            {/* Compact Unscheduled Task List */}
+            <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto pt-1">
+              {tasks.filter(t => !t.time).map(task => (
+                <div
+                  key={task.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, task)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium cursor-grab active:cursor-grabbing border ${categoryMap[task.categoryId]?.bg || 'bg-white'} ${categoryMap[task.categoryId]?.text || 'text-slate-800'} ${categoryMap[task.categoryId]?.border || 'border-slate-200'}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={task.completed}
+                    onChange={() => toggleTaskComplete(task.id)}
+                    className="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                  />
+                  <span className={task.completed ? 'line-through opacity-60' : ''}>{task.title}</span>
+                </div>
+              ))}
+              {tasks.filter(t => !t.time).length === 0 && (
+                <span className="text-xs text-slate-400 italic">No unscheduled tasks. All set!</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Calendar View Container */}
+        <div className="glass-card rounded-2xl p-4 sm:p-6 text-slate-800">
+          
+          {/* Controls Bar */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pb-6 border-b border-slate-200/60">
+            
+            {/* Nav Date Controls */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => navigateDate(-1)}
+                className="p-2 hover:bg-slate-200/60 rounded-lg transition"
+              >
+                <ChevronLeft className="w-5 h-5 text-slate-600" />
+              </button>
+              <button
+                onClick={() => setCurrentDate(new Date())}
+                className="px-3 py-1.5 text-xs font-semibold bg-white/80 border border-slate-200 rounded-lg shadow-sm hover:bg-white"
+              >
+                Today
+              </button>
+              <button
+                onClick={() => navigateDate(1)}
+                className="p-2 hover:bg-slate-200/60 rounded-lg transition"
+              >
+                <ChevronRight className="w-5 h-5 text-slate-600" />
+              </button>
+              <span className="text-base font-bold ml-2 text-slate-800">
+                {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+              </span>
+            </div>
+
+            {/* Category Filter & View Mode Switcher */}
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Filter */}
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="bg-white/80 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="all">All Categories</option>
+                {categories.map(cat => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+
+              {/* View Toggle Buttons */}
+              <div className="flex bg-slate-200/70 p-1 rounded-xl gap-1">
+                {['day', 'week', 'month'].map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => setViewMode(mode)}
+                    className={`px-3 py-1 rounded-lg text-xs font-semibold capitalize transition ${
+                      viewMode === mode ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {mode}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Calendar Views */}
+          <div className="pt-4 overflow-x-auto">
+            {viewMode === 'day' && (
+              <DayView 
+                currentDate={currentDate} 
+                hours={hours} 
+                tasks={filteredTasks} 
+                categoryMap={categoryMap}
+                categories={categories}
+                onDropSlot={handleDropSlot}
+                onToggleComplete={toggleTaskComplete}
+                onDeleteTask={deleteTask}
+                onUpdateCategory={updateTaskCategory}
+              />
+            )}
+            {viewMode === 'week' && (
+              <WeekView 
+                currentDate={currentDate} 
+                hours={hours} 
+                tasks={filteredTasks} 
+                categoryMap={categoryMap}
+                categories={categories}
+                onDropSlot={handleDropSlot}
+                onToggleComplete={toggleTaskComplete}
+                onDeleteTask={deleteTask}
+                onUpdateCategory={updateTaskCategory}
+              />
+            )}
+            {viewMode === 'month' && (
+              <MonthView 
+                currentDate={currentDate} 
+                tasks={filteredTasks} 
+                categoryMap={categoryMap}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Task Edit/Create Modal */}
+      {isTaskModalOpen && (
+        <TaskModal
+          task={editingTask}
+          categories={categories}
+          onClose={() => setIsTaskModalOpen(false)}
+          onSave={handleSaveTask}
+        />
+      )}
+
+      {/* Category Management Modal */}
+      {isCategoryModalOpen && (
+        <CategoryManagerModal
+          categories={categories}
+          onClose={() => setIsCategoryModalOpen(false)}
+          onAdd={handleAddCategory}
+          onDelete={handleDeleteCategory}
+        />
+      )}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------
+// Day View Component
+// ----------------------------------------------------------------------
+function DayView({ currentDate, hours, tasks, categoryMap, categories, onDropSlot, onToggleComplete, onDeleteTask, onUpdateCategory }) {
+  const dateStr = dateKey(currentDate);
+
+  return (
+    <div className="min-w-[600px]">
+      <div className="grid grid-cols-[80px_1fr] border-b border-slate-200 pb-2 mb-2 font-bold text-slate-600 text-sm">
+        <div>Time</div>
+        <div>{currentDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
+      </div>
+
+      <div className="divide-y divide-slate-100">
+        {hours.map(hour => {
+          const hourTasks = tasks.filter(t => t.date === dateStr && t.time && t.time.startsWith(hour.slice(0, 2)));
+          return (
+            <div 
+              key={hour} 
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => onDropSlot(e, dateStr, hour)}
+              className="grid grid-cols-[80px_1fr] min-h-[64px] hover:bg-slate-50/50 transition relative group"
+            >
+              <div className="text-xs font-semibold text-slate-400 py-2">{hour}</div>
+              <div className="p-1 flex flex-col gap-1.5">
+                {hourTasks.map(task => (
+                  <TaskCard 
+                    key={task.id} 
+                    task={task} 
+                    categoryMap={categoryMap}
+                    categories={categories}
+                    onToggleComplete={onToggleComplete}
+                    onDeleteTask={onDeleteTask}
+                    onUpdateCategory={onUpdateCategory}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------
+// Week View Component
+// ----------------------------------------------------------------------
+function WeekView({ currentDate, hours, tasks, categoryMap, categories, onDropSlot, onToggleComplete, onDeleteTask, onUpdateCategory }) {
+  const weekDays = useMemo(() => {
+    const start = new Date(currentDate);
+    const day = start.getDay();
+    const diff = start.getDate() - day + (day === 0 ? -6 : 1); // Monday start
+    start.setDate(diff);
+
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start);
+      d.setDate(d.getDate() + i);
+      days.push(d);
+    }
+    return days;
+  }, [currentDate]);
+
+  return (
+    <div className="min-w-[800px]">
+      {/* Week Header */}
+      <div className="grid grid-cols-[70px_repeat(7,1fr)] border-b border-slate-200 pb-3 mb-2 text-center">
+        <div className="text-xs font-bold text-slate-400 self-end">Time</div>
+        {weekDays.map(day => {
+          const isToday = new Date().toDateString() === day.toDateString();
+          return (
+            <div key={day.toISOString()} className="flex flex-col items-center">
+              <span className="text-xs font-bold uppercase text-slate-400">
+                {day.toLocaleDateString('en-US', { weekday: 'short' })}
+              </span>
+              <span className={`text-base font-extrabold w-8 h-8 flex items-center justify-center rounded-full mt-1 ${
+                isToday ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-800'
+              }`}>
+                {day.getDate()}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Grid */}
+      <div className="divide-y divide-slate-100">
+        {hours.map(hour => (
+          <div key={hour} className="grid grid-cols-[70px_repeat(7,1fr)] min-h-[70px]">
+            <div className="text-xs font-semibold text-slate-400 py-2 pr-2 text-right">{hour}</div>
+            {weekDays.map(day => {
+              const dateStr = dateKey(day);
+              const cellTasks = tasks.filter(t => t.date === dateStr && t.time && t.time.startsWith(hour.slice(0, 2)));
+
+              return (
+                <div
+                  key={dateStr}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => onDropSlot(e, dateStr, hour)}
+                  className="border-l border-slate-100/80 p-1 flex flex-col gap-1 hover:bg-indigo-50/20 transition"
+                >
+                  {cellTasks.map(task => (
+                    <TaskCard 
+                      key={task.id} 
+                      task={task} 
+                      categoryMap={categoryMap}
+                      categories={categories}
+                      onToggleComplete={onToggleComplete}
+                      onDeleteTask={onDeleteTask}
+                      onUpdateCategory={onUpdateCategory}
+                    />
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------
+// Month View Component
+// ----------------------------------------------------------------------
+function MonthView({ currentDate, tasks, categoryMap }) {
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDayIndex = new Date(year, month, 1).getDay();
+
+  const daysArray = useMemo(() => {
+    const list = [];
+    for (let i = 0; i < firstDayIndex; i++) list.push(null);
+    for (let d = 1; d <= daysInMonth; d++) {
+      list.push(new Date(year, month, d));
+    }
+    return list;
+  }, [year, month, daysInMonth, firstDayIndex]);
+
+  return (
+    <div>
+      <div className="grid grid-cols-7 border-b border-slate-200 pb-2 mb-2 text-center text-xs font-bold text-slate-400 uppercase">
+        <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+      </div>
+      <div className="grid grid-cols-7 gap-1 auto-rows-fr">
+        {daysArray.map((day, idx) => {
+          if (!day) return <div key={`empty-${idx}`} className="min-h-[90px] bg-slate-50/30 rounded-lg" />;
+          
+          const dateStr = dateKey(day);
+          const dayTasks = tasks.filter(t => t.date === dateStr);
+          const isToday = new Date().toDateString() === day.toDateString();
+
+          return (
+            <div key={dateStr} className={`min-h-[90px] border border-slate-200/60 rounded-xl p-1.5 flex flex-col justify-between ${isToday ? 'bg-indigo-50/40 border-indigo-300' : 'bg-white/50'}`}>
+              <div className="flex justify-between items-center">
+                <span className={`text-xs font-bold ${isToday ? 'text-indigo-600' : 'text-slate-700'}`}>
+                  {day.getDate()}
+                </span>
+                {dayTasks.length > 0 && (
+                  <span className="text-[10px] font-semibold bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full">
+                    {dayTasks.length}
+                  </span>
+                )}
+              </div>
+              <div className="space-y-1 mt-1 overflow-y-auto max-h-[60px]">
+                {dayTasks.slice(0, 3).map(task => {
+                  const cat = categoryMap[task.categoryId] || {};
+                  return (
+                    <div key={task.id} className={`text-[10px] truncate px-1.5 py-0.5 rounded font-medium ${cat.bg || 'bg-slate-100'} ${cat.text || 'text-slate-800'}`}>
+                      {task.title}
+                    </div>
+                  );
+                })}
+                {dayTasks.length > 3 && (
+                  <div className="text-[9px] text-slate-400 text-center">+{dayTasks.length - 3} more</div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------
+// Individual Task Card Component (with category change dropdown & clipping fix)
+// ----------------------------------------------------------------------
+function TaskCard({ task, categoryMap, categories, onToggleComplete, onDeleteTask, onUpdateCategory }) {
+  const cat = categoryMap[task.categoryId] || categoryMap['general'];
+
+  return (
+    <div
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/plain', task.id);
+      }}
+      className={`group relative p-2 rounded-xl border text-xs shadow-sm transition-all flex flex-col justify-between ${cat.bg} ${cat.text} ${cat.border} overflow-hidden`}
+    >
+      <div className="flex items-start justify-between gap-1">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <input
+            type="checkbox"
+            checked={task.completed}
+            onChange={() => onToggleComplete(task.id)}
+            className="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer flex-shrink-0"
+          />
+          <span className={`font-semibold truncate ${task.completed ? 'line-through opacity-60' : ''}`}>
+            {task.title}
+          </span>
+        </div>
+
+        <button 
+          onClick={() => onDeleteTask(task.id)}
+          className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-rose-600 transition flex-shrink-0"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      <div className="flex items-center justify-between mt-2 pt-1 border-t border-black/5 text-[10px]">
+        <span className="opacity-80 font-medium truncate">
+          {task.time ? `${task.time} (${task.duration}m)` : 'Unscheduled'}
+        </span>
+
+        {/* Dynamic Category Selector */}
+        <select
+          value={task.categoryId}
+          onChange={(e) => onUpdateCategory(task.id, e.target.value)}
+          className="bg-white/60 text-[10px] font-semibold border-0 rounded px-1 py-0.5 focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+        >
+          {categories.map(c => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------
+// Task Add/Edit Modal
+// ----------------------------------------------------------------------
+function TaskModal({ task, categories, onClose, onSave }) {
+  const [title, setTitle] = useState(task?.title || '');
+  const [time, setTime] = useState(task?.time || '08:00');
+  const [duration, setDuration] = useState(task?.duration || 30);
+  const [categoryId, setCategoryId] = useState(task?.categoryId || 'general');
+  const [recurring, setRecurring] = useState(task?.recurring || 'none');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!title.trim()) return;
+    onSave({ title, time, duration: Number(duration), categoryId, recurring });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
+        <div className="flex justify-between items-center border-b pb-3">
+          <h3 className="text-lg font-bold text-slate-800">{task ? 'Edit Task' : 'New Task'}</h3>
+          <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5 text-slate-500" /></button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-600 mb-1">Title</label>
+            <input
+              type="text"
+              required
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              placeholder="Task name..."
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">Time</label>
+              <input
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                className="w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">Duration (mins)</label>
+              <input
+                type="number"
+                value={duration}
+                onChange={(e) => setDuration(e.target.value)}
+                className="w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">Category</label>
+              <select
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+                className="w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              >
+                {categories.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">Recurrence</label>
+              <select
+                value={recurring}
+                onChange={(e) => setRecurring(e.target.value)}
+                className="w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              >
+                <option value="none">None</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={onClose} className="px-4 py-2 border rounded-xl text-sm font-medium hover:bg-slate-50">Cancel</button>
+            <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-500 shadow-md">Save Task</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------
+// Category Manager Modal (Create & Delete Categories)
+// ----------------------------------------------------------------------
+function CategoryManagerModal({ categories, onClose, onAdd, onDelete }) {
+  const [newCatName, setNewCatName] = useState('');
+  const [selectedPalette, setSelectedPalette] = useState(PALETTES[0]);
+
+  const handleCreate = (e) => {
+    e.preventDefault();
+    if (!newCatName.trim()) return;
+    onAdd(newCatName.trim(), selectedPalette);
+    setNewCatName('');
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-5">
+        <div className="flex justify-between items-center border-b pb-3">
+          <h3 className="text-lg font-bold text-slate-800">Manage Categories</h3>
+          <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5 text-slate-500" /></button>
+        </div>
+
+        {/* Existing Categories */}
+        <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+          <label className="block text-xs font-bold text-slate-600 mb-1">Existing Groups</label>
+          {categories.map(cat => (
+            <div key={cat.id} className={`flex items-center justify-between p-2.5 rounded-xl border ${cat.bg} ${cat.border}`}>
+              <span className={`text-xs font-bold ${cat.text}`}>{cat.name}</span>
+              {cat.id !== 'general' ? (
+                <button
+                  onClick={() => onDelete(cat.id)}
+                  className="p-1 hover:bg-rose-200/50 rounded-lg text-rose-600 transition"
+                  title="Delete category"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              ) : (
+                <span className="text-[10px] font-semibold text-slate-400 uppercase">Default</span>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Add New Category */}
+        <form onSubmit={handleCreate} className="space-y-3 pt-2 border-t">
+          <label className="block text-xs font-bold text-slate-600">Create New Category</label>
+          <input
+            type="text"
+            placeholder="Category name..."
+            value={newCatName}
+            onChange={(e) => setNewCatName(e.target.value)}
+            className="w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+          />
+
+          <div>
+            <label className="block text-xs font-bold text-slate-500 mb-1.5">Color Theme</label>
+            <div className="flex gap-2">
+              {PALETTES.map((p, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => setSelectedPalette(p)}
+                  className={`w-7 h-7 rounded-full border-2 transition ${p.bg} ${
+                    selectedPalette.name === p.name ? 'border-indigo-600 scale-110 shadow-sm' : 'border-transparent'
+                  }`}
+                />
+              ))}
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 rounded-xl text-sm transition shadow-md"
+          >
+            Add Category
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
