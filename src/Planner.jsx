@@ -27,6 +27,29 @@ const scheduleStartHour = times => {
   const hour = Number(times?.split('-')[0]?.split(':')[0]);
   return hour > 0 && hour < 6 ? hour + 12 : hour;
 };
+const scheduleTimeMinutes = value => {
+  const [hourPart, minutePart] = String(value || '').split(':');
+  let hour = Number(hourPart);
+  if (!Number.isFinite(hour) || !Number.isFinite(Number(minutePart))) return null;
+  if (hour > 0 && hour < 6) hour += 12;
+  return hour * 60 + Number(minutePart);
+};
+const scheduleRangeMinutes = times => {
+  const [start, end] = String(times || '').split('-');
+  return [scheduleTimeMinutes(start), scheduleTimeMinutes(end)];
+};
+const schoolEventsForHour = (schedule, hour, now) => {
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  if (currentMinutes < 22 * 60) {
+    if (Number(hour.slice(0, 2)) !== now.getHours()) return [];
+    const active = (schedule?.periods || []).find(period => {
+      const [start, end] = scheduleRangeMinutes(period.times);
+      return start !== null && end !== null && start <= currentMinutes && currentMinutes < end;
+    });
+    return active ? [active] : [];
+  }
+  return (schedule?.periods || []).filter(period => scheduleStartHour(period.times) === Number(hour.slice(0, 2)));
+};
 
 export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
 
@@ -390,6 +413,7 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
                 hours={hours} 
                 tasks={filteredTasks} 
                 schoolSchedules={schoolSchedules}
+                currentTime={currentTime}
                 categoryMap={categoryMap}
                 categories={categories}
                 onDropSlot={handleDropSlot}
@@ -404,6 +428,7 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
                 hours={hours} 
                 tasks={filteredTasks} 
                 schoolSchedules={schoolSchedules}
+                currentTime={currentTime}
                 categoryMap={categoryMap}
                 categories={categories}
                 onDropSlot={handleDropSlot}
@@ -463,12 +488,13 @@ function SchoolDayBadge({ schedule, compact = false }) {
 
 function SchoolPeriod({ period, schedule }) {
   const color = schedule?.color ? `#${schedule.color.replace(/^#/, '')}` : '#6658e8';
+  const label = period.period === 'O' ? period.activity || period.name || 'Office hours' : period.activity || period.name || period.period;
   return <div className="school-period" style={{ '--school-color': color, '--school-tint': `color-mix(in srgb, ${color} 15%, white)` }}>
-    <time>{period.times}</time><strong>{period.period}</strong>
+    <time>{period.times}</time><strong title={label}>{label}</strong>
   </div>;
 }
 
-function DayView({ currentDate, hours, tasks, schoolSchedules, categoryMap, categories, onDropSlot, onToggleComplete, onDeleteTask, onUpdateCategory }) {
+function DayView({ currentDate, hours, tasks, schoolSchedules, currentTime, categoryMap, categories, onDropSlot, onToggleComplete, onDeleteTask, onUpdateCategory }) {
   const dateStr = dateKey(currentDate);
   const schoolSchedule = schoolSchedules[dateStr];
 
@@ -491,7 +517,10 @@ function DayView({ currentDate, hours, tasks, schoolSchedules, categoryMap, cate
             >
               <div className="text-xs font-semibold text-slate-400 py-2">{hour}</div>
               <div className="p-1 flex flex-col gap-1.5">
-                {(schoolSchedule?.periods || []).filter(period => scheduleStartHour(period.times) === Number(hour.slice(0, 2))).map((period, index) => <SchoolPeriod key={`${period.period}-${index}`} period={period} schedule={schoolSchedule} />)}
+                {(dateStr === dateKey(currentTime)
+                  ? schoolEventsForHour(schoolSchedule, hour, currentTime)
+                  : (schoolSchedule?.periods || []).filter(period => scheduleStartHour(period.times) === Number(hour.slice(0, 2)))
+                ).map((period, index) => <SchoolPeriod key={`${period.period}-${index}`} period={period} schedule={schoolSchedule} />)}
                 {hourTasks.map(task => (
                   <TaskCard 
                     key={task.id} 
@@ -515,7 +544,7 @@ function DayView({ currentDate, hours, tasks, schoolSchedules, categoryMap, cate
 // ----------------------------------------------------------------------
 // Week View Component
 // ----------------------------------------------------------------------
-function WeekView({ currentDate, hours, tasks, schoolSchedules, categoryMap, categories, onDropSlot, onToggleComplete, onDeleteTask, onUpdateCategory }) {
+function WeekView({ currentDate, hours, tasks, schoolSchedules, currentTime, categoryMap, categories, onDropSlot, onToggleComplete, onDeleteTask, onUpdateCategory }) {
   const weekDays = useMemo(() => {
     const start = new Date(currentDate);
     const day = start.getDay();
@@ -563,7 +592,9 @@ function WeekView({ currentDate, hours, tasks, schoolSchedules, categoryMap, cat
               const dateStr = dateKey(day);
               const cellTasks = tasks.filter(t => t.date === dateStr && t.time && t.time.startsWith(hour.slice(0, 2)));
               const schoolSchedule = schoolSchedules[dateStr];
-              const periodEvents = (schoolSchedule?.periods || []).filter(period => scheduleStartHour(period.times) === Number(hour.slice(0, 2)));
+              const periodEvents = dateKey(currentTime) === dateStr
+                ? schoolEventsForHour(schoolSchedule, hour, currentTime)
+                : (schoolSchedule?.periods || []).filter(period => scheduleStartHour(period.times) === Number(hour.slice(0, 2)));
 
               return (
                 <div
