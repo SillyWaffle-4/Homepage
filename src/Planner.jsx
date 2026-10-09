@@ -128,7 +128,11 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
   }, [categories]);
 
   const scheduleDates = useMemo(() => {
-    if (viewMode === 'day') return [dateKey(currentDate)];
+    if (viewMode === 'day') {
+      const nextDate = new Date(currentDate);
+      nextDate.setDate(nextDate.getDate() + 1);
+      return [dateKey(currentDate), dateKey(nextDate)];
+    }
     if (viewMode === 'week') {
       const start = new Date(currentDate);
       const day = start.getDay();
@@ -568,6 +572,15 @@ function SchoolDayBadge({ schedule, compact = false }) {
   >{schedule.schedule_day}</span>;
 }
 
+function middleSchoolPeriods(periods = []) {
+  return periods.filter(period => {
+    const label = String(period.activity || period.name || "");
+    // EPS posts both US and MS variants of shared lunch/advisory activities.
+    // Keep the MS variant and exclude US-only rows from the planner display.
+    return !/\bUS\b/i.test(label);
+  });
+}
+
 function SchoolPeriod({ period, schedule }) {
   const color = schedule?.color ? `#${schedule.color.replace(/^#/, '')}` : '#6658e8';
   const label = period.period === 'O' ? period.activity || period.name || 'Office hours' : period.activity || period.name || period.period;
@@ -592,46 +605,45 @@ function CalendarSlot({ periods, tasks, schedule, categoryMap, categories, onTog
 }
 
 function DayView({ currentDate, hours, getTasksForDate, schoolSchedules, currentTime, categoryMap, categories, onDropSlot, onToggleComplete, onDeleteTask, onUpdateCategory, showOneMoreAtATime }) {
-  const dateStr = dateKey(currentDate);
-  const schoolSchedule = schoolSchedules[dateStr];
+  const dayColumns = [currentDate, new Date(currentDate)];
+  dayColumns[1].setDate(dayColumns[1].getDate() + 1);
 
   return (
     <div className="planner-day-view">
-      <div className="grid grid-cols-[80px_1fr] border-b border-slate-200 pb-2 mb-2 font-bold text-slate-600 text-sm">
-        <div>Time</div>
-        <div className="school-day-heading">{currentDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}<SchoolDayBadge schedule={schoolSchedule} /></div>
-      </div>
-
-      <div className="divide-y divide-slate-100">
-        {hours.map(hour => {
-          const hourTasks = getTasksForDate(dateStr).filter(t => t.time && t.time.startsWith(hour.slice(0, 2)));
-          return (
-            <div
-              key={hour}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => onDropSlot(e, dateStr, hour)}
-              className="grid grid-cols-[80px_1fr] min-h-[64px] hover:bg-slate-50/50 transition relative group"
-            >
-              <div className="text-xs font-semibold text-slate-400 py-2">{hour}</div>
-              <CalendarSlot
-                className="day-calendar-slot p-1"
-                periods={dateStr === dateKey(currentTime)
-                  ? schoolEventsForHour(schoolSchedule, hour, currentTime)
-                  : (schoolSchedule?.periods || []).filter(period => scheduleStartHour(period.times) === Number(hour.slice(0, 2)))
-                }
-                tasks={hourTasks}
-                schedule={schoolSchedule}
-                categoryMap={categoryMap}
-                categories={categories}
-                onToggleComplete={onToggleComplete}
-                onDeleteTask={onDeleteTask}
-                onUpdateCategory={onUpdateCategory}
-                showOneMoreAtATime={showOneMoreAtATime}
-              />
-            </div>
-          );
-        })}
-      </div>
+      {dayColumns.map((day, columnIndex) => {
+        const dateStr = dateKey(day);
+        const schoolSchedule = schoolSchedules[dateStr];
+        const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+        return <section className={`planner-day-column ${columnIndex === 1 ? 'planner-day-next-day' : ''}`} key={dateStr}>
+          <header className="planner-day-column-heading">
+            <div><span>{columnIndex === 0 ? 'Selected day' : 'Next day'}</span><strong>{day.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</strong></div>
+            {schoolSchedule?.schedule_day ? <SchoolDayBadge schedule={schoolSchedule} /> : <span className="planner-day-no-school">{isWeekend ? 'Weekend · no school' : 'No school schedule'}</span>}
+          </header>
+          <div className="planner-day-hours">
+            {hours.map(hour => {
+              const hourTasks = getTasksForDate(dateStr).filter(t => t.time && t.time.startsWith(hour.slice(0, 2)));
+              return <div key={hour} onDragOver={event => event.preventDefault()} onDrop={event => onDropSlot(event, dateStr, hour)} className="planner-day-hour-row">
+                <div className="planner-day-hour-label">{hour}</div>
+                <CalendarSlot
+                  className="day-calendar-slot p-1"
+                  periods={middleSchoolPeriods(dateStr === dateKey(currentTime)
+                    ? schoolEventsForHour(schoolSchedule, hour, currentTime)
+                    : (schoolSchedule?.periods || []).filter(period => scheduleStartHour(period.times) === Number(hour.slice(0, 2)))
+                  )}
+                  tasks={hourTasks}
+                  schedule={schoolSchedule}
+                  categoryMap={categoryMap}
+                  categories={categories}
+                  onToggleComplete={onToggleComplete}
+                  onDeleteTask={onDeleteTask}
+                  onUpdateCategory={onUpdateCategory}
+                  showOneMoreAtATime={showOneMoreAtATime}
+                />
+              </div>;
+            })}
+          </div>
+        </section>;
+      })}
     </div>
   );
 }
@@ -687,7 +699,7 @@ function WeekView({ currentDate, hours, getTasksForDate, schoolSchedules, catego
               const dateStr = dateKey(day);
               const cellTasks = getTasksForDate(dateStr).filter(t => t.time && t.time.startsWith(hour.slice(0, 2)));
               const schoolSchedule = schoolSchedules[dateStr];
-              const periodEvents = (schoolSchedule?.periods || []).filter(period => scheduleStartHour(period.times) === Number(hour.slice(0, 2)));
+              const periodEvents = middleSchoolPeriods((schoolSchedule?.periods || []).filter(period => scheduleStartHour(period.times) === Number(hour.slice(0, 2))));
 
               return (
                 <div
