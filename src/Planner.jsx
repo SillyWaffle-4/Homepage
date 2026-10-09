@@ -79,15 +79,12 @@ const scheduleRangeMinutes = times => {
 };
 const schoolEventsForHour = (schedule, hour, now) => {
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
-  if (currentMinutes < 22 * 60) {
-    if (Number(hour.slice(0, 2)) !== now.getHours()) return [];
-    const active = (schedule?.periods || []).find(period => {
-      const [start, end] = scheduleRangeMinutes(period.times);
-      return start !== null && end !== null && start <= currentMinutes && currentMinutes < end;
-    });
-    return active ? [active] : [];
-  }
-  return (schedule?.periods || []).filter(period => scheduleStartHour(period.times) === Number(hour.slice(0, 2)));
+  if (Number(hour.slice(0, 2)) !== now.getHours()) return [];
+  const active = (schedule?.periods || []).find(period => {
+    const [start, end] = scheduleRangeMinutes(period.times);
+    return start !== null && end !== null && start <= currentMinutes && currentMinutes < end;
+  });
+  return active ? [active] : [];
 };
 
 export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
@@ -411,7 +408,7 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
         </div>
 
         {/* Calendar View Container */}
-        <div className="glass-card rounded-2xl p-4 sm:p-6 text-slate-800">
+          <div className={`glass-card rounded-2xl p-4 sm:p-6 text-slate-800 ${viewMode === 'day' ? 'planner-calendar-card-day' : ''}`}>
           
           {/* Controls Bar */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pb-6 border-b border-slate-200/60">
@@ -678,9 +675,7 @@ function WeekView({ currentDate, hours, getTasksForDate, schoolSchedules, curren
               const dateStr = dateKey(day);
               const cellTasks = getTasksForDate(dateStr).filter(t => t.time && t.time.startsWith(hour.slice(0, 2)));
               const schoolSchedule = schoolSchedules[dateStr];
-              const periodEvents = dateKey(currentTime) === dateStr
-                ? schoolEventsForHour(schoolSchedule, hour, currentTime)
-                : (schoolSchedule?.periods || []).filter(period => scheduleStartHour(period.times) === Number(hour.slice(0, 2)));
+              const periodEvents = (schoolSchedule?.periods || []).filter(period => scheduleStartHour(period.times) === Number(hour.slice(0, 2)));
 
               return (
                 <div
