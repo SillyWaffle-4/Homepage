@@ -100,6 +100,7 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
   const [viewMode, setViewMode] = useState(initialCalendarView); // 'day' | 'week' | 'month'
   const [defaultView, setDefaultView] = useState(initialCalendarView);
   const [calendarSettingsOpen, setCalendarSettingsOpen] = useState(false);
+  const [showOneMoreAtATime, setShowOneMoreAtATime] = useState(() => localStorage.getItem('planner-show-one-more') === 'true');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -178,6 +179,10 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
     setDefaultView(mode);
     setViewMode(mode);
     localStorage.setItem('planner-calendar-default-view', mode);
+  };
+  const chooseOverflowBehavior = enabled => {
+    setShowOneMoreAtATime(enabled);
+    localStorage.setItem('planner-show-one-more', String(enabled));
   };
 
   // Task Actions
@@ -472,6 +477,10 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
                   <strong>Default calendar view</strong>
                   <div className="planner-default-views">{['day', 'week', 'month'].map(mode => <button type="button" key={mode} className={defaultView === mode ? 'selected' : ''} onClick={() => chooseDefaultView(mode)}>{mode}</button>)}</div>
                   <small>Used whenever you open the planner.</small>
+                  <div className="planner-setting-divider"/>
+                  <strong>Overflow behavior</strong>
+                  <label className="planner-overflow-setting"><input type="checkbox" checked={showOneMoreAtATime} onChange={event => chooseOverflowBehavior(event.target.checked)}/><span>Show one more item per click</span></label>
+                  <small>{showOneMoreAtATime ? 'Each click reveals one more calendar item.' : 'Each click reveals all remaining items.'}</small>
                 </section>}
               </div>
             </div>
@@ -492,6 +501,7 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
                 onToggleComplete={toggleTaskComplete}
                 onDeleteTask={deleteTask}
                 onUpdateCategory={updateTaskCategory}
+                showOneMoreAtATime={showOneMoreAtATime}
               />
             )}
             {viewMode === 'week' && (
@@ -500,13 +510,13 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
                 hours={hours} 
                 getTasksForDate={getTasksForDate}
                 schoolSchedules={schoolSchedules}
-                currentTime={currentTime}
                 categoryMap={categoryMap}
                 categories={categories}
                 onDropSlot={handleDropSlot}
                 onToggleComplete={toggleTaskComplete}
                 onDeleteTask={deleteTask}
                 onUpdateCategory={updateTaskCategory}
+                showOneMoreAtATime={showOneMoreAtATime}
               />
             )}
             {viewMode === 'month' && (
@@ -566,21 +576,22 @@ function SchoolPeriod({ period, schedule }) {
   </div>;
 }
 
-function CalendarSlot({ periods, tasks, schedule, categoryMap, categories, onToggleComplete, onDeleteTask, onUpdateCategory, className = '' }) {
-  const [expanded, setExpanded] = useState(false);
-  const visiblePeriods = expanded ? periods : periods.slice(0, 2);
-  const taskLimit = 1;
-  const visibleTasks = expanded ? tasks : tasks.slice(0, taskLimit);
-  const hiddenCount = periods.length - visiblePeriods.length + tasks.length - visibleTasks.length;
+function CalendarSlot({ periods, tasks, schedule, categoryMap, categories, onToggleComplete, onDeleteTask, onUpdateCategory, showOneMoreAtATime, className = '' }) {
+  const [revealedCount, setRevealedCount] = useState(null);
+  const items = [...periods.map((period, index) => ({ type: 'period', period, key: `period-${period.period}-${index}` })), ...tasks.map(task => ({ type: 'task', task, key: `task-${task.id}` }))];
+  const initialCount = Math.min(periods.length, 2) + Math.min(tasks.length, 1);
+  const visibleCount = Math.min(revealedCount ?? initialCount, items.length);
+  const hiddenCount = items.length - visibleCount;
 
   return <div className={`calendar-slot ${className}`}>
-    {visiblePeriods.map((period, index) => <SchoolPeriod key={`period-${period.period}-${index}`} period={period} schedule={schedule} />)}
-    {visibleTasks.map(task => <TaskCard key={task.id} task={task} categoryMap={categoryMap} categories={categories} onToggleComplete={onToggleComplete} onDeleteTask={onDeleteTask} onUpdateCategory={onUpdateCategory} />)}
-    {(hiddenCount > 0 || expanded && periods.length + tasks.length > 2) && <button type="button" className="calendar-slot-more" onClick={() => setExpanded(value => !value)}>{expanded ? 'Show less' : `Show ${hiddenCount} more`}</button>}
+    {items.slice(0, visibleCount).map(item => item.type === 'period'
+      ? <SchoolPeriod key={item.key} period={item.period} schedule={schedule} />
+      : <TaskCard key={item.key} task={item.task} categoryMap={categoryMap} categories={categories} onToggleComplete={onToggleComplete} onDeleteTask={onDeleteTask} onUpdateCategory={onUpdateCategory} />)}
+    {(hiddenCount > 0 || visibleCount > initialCount) && <button type="button" className="calendar-slot-more" onClick={() => setRevealedCount(hiddenCount > 0 ? showOneMoreAtATime ? visibleCount + 1 : items.length : null)}>{hiddenCount > 0 ? showOneMoreAtATime ? 'Show one more' : `Show ${hiddenCount} more` : 'Show less'}</button>}
   </div>;
 }
 
-function DayView({ currentDate, hours, getTasksForDate, schoolSchedules, currentTime, categoryMap, categories, onDropSlot, onToggleComplete, onDeleteTask, onUpdateCategory }) {
+function DayView({ currentDate, hours, getTasksForDate, schoolSchedules, currentTime, categoryMap, categories, onDropSlot, onToggleComplete, onDeleteTask, onUpdateCategory, showOneMoreAtATime }) {
   const dateStr = dateKey(currentDate);
   const schoolSchedule = schoolSchedules[dateStr];
 
@@ -615,6 +626,7 @@ function DayView({ currentDate, hours, getTasksForDate, schoolSchedules, current
                 onToggleComplete={onToggleComplete}
                 onDeleteTask={onDeleteTask}
                 onUpdateCategory={onUpdateCategory}
+                showOneMoreAtATime={showOneMoreAtATime}
               />
             </div>
           );
@@ -627,7 +639,7 @@ function DayView({ currentDate, hours, getTasksForDate, schoolSchedules, current
 // ----------------------------------------------------------------------
 // Week View Component
 // ----------------------------------------------------------------------
-function WeekView({ currentDate, hours, getTasksForDate, schoolSchedules, currentTime, categoryMap, categories, onDropSlot, onToggleComplete, onDeleteTask, onUpdateCategory }) {
+function WeekView({ currentDate, hours, getTasksForDate, schoolSchedules, categoryMap, categories, onDropSlot, onToggleComplete, onDeleteTask, onUpdateCategory, showOneMoreAtATime }) {
   const weekDays = useMemo(() => {
     const start = new Date(currentDate);
     const day = start.getDay();
@@ -646,12 +658,12 @@ function WeekView({ currentDate, hours, getTasksForDate, schoolSchedules, curren
   return (
     <div className="planner-week-view">
       {/* Week Header */}
-      <div className="grid grid-cols-[70px_repeat(7,1fr)] border-b border-slate-200 pb-3 mb-2 text-center">
-        <div className="text-xs font-bold text-slate-400 self-end">Time</div>
-        {weekDays.map(day => {
+      <div className="planner-week-header grid grid-cols-[70px_repeat(7,minmax(0,1fr))] border-b border-slate-300 pb-3 mb-2 text-center">
+        <div className="planner-week-time-heading text-xs font-bold text-slate-500 self-end">Time</div>
+        {weekDays.map((day, index) => {
           const isToday = new Date().toDateString() === day.toDateString();
           return (
-            <div key={day.toISOString()} className="flex flex-col items-center">
+            <div key={day.toISOString()} className={`planner-week-day-head flex flex-col items-center ${index % 2 === 0 ? 'shaded' : ''}`}>
               <span className="text-xs font-bold uppercase text-slate-400">
                 {day.toLocaleDateString('en-US', { weekday: 'short' })}
               </span>
@@ -667,11 +679,11 @@ function WeekView({ currentDate, hours, getTasksForDate, schoolSchedules, curren
       </div>
 
       {/* Grid */}
-      <div className="divide-y divide-slate-100">
+      <div className="planner-week-body">
         {hours.map(hour => (
-          <div key={hour} className="grid grid-cols-[70px_repeat(7,1fr)] min-h-[70px]">
-            <div className="text-xs font-semibold text-slate-400 py-2 pr-2 text-right">{hour}</div>
-            {weekDays.map(day => {
+          <div key={hour} className="planner-week-row grid grid-cols-[70px_repeat(7,minmax(0,1fr))] min-h-[70px]">
+            <div className="planner-week-time-label text-xs font-semibold text-slate-500 py-2 pr-2 text-right">{hour}</div>
+            {weekDays.map((day, index) => {
               const dateStr = dateKey(day);
               const cellTasks = getTasksForDate(dateStr).filter(t => t.time && t.time.startsWith(hour.slice(0, 2)));
               const schoolSchedule = schoolSchedules[dateStr];
@@ -682,7 +694,7 @@ function WeekView({ currentDate, hours, getTasksForDate, schoolSchedules, curren
                   key={dateStr}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => onDropSlot(e, dateStr, hour)}
-                  className="border-l border-slate-100/80 p-1 hover:bg-indigo-50/20 transition"
+                  className={`planner-week-lane p-1 hover:bg-indigo-50/30 transition ${index % 2 === 0 ? 'shaded' : ''}`}
                 >
                   <CalendarSlot
                     key={`${dateStr}-${hour}`}
@@ -694,6 +706,7 @@ function WeekView({ currentDate, hours, getTasksForDate, schoolSchedules, curren
                     onToggleComplete={onToggleComplete}
                     onDeleteTask={onDeleteTask}
                     onUpdateCategory={onUpdateCategory}
+                    showOneMoreAtATime={showOneMoreAtATime}
                   />
                 </div>
               );
