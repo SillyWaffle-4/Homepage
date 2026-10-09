@@ -23,6 +23,45 @@ const PALETTES = [
 ];
 
 const dateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+const dateOrdinal = value => {
+  const [year, month, day] = String(value || '').split('-').map(Number);
+  return Date.UTC(year, month - 1, day) / 86400000;
+};
+const recurrenceOccursOn = (task, targetDate, schoolSchedules) => {
+  if (!task.date || targetDate < task.date) return false;
+  const rule = String(task.recurring || 'none').toLowerCase();
+  if (rule === 'none') return targetDate === task.date;
+  const daysSinceStart = dateOrdinal(targetDate) - dateOrdinal(task.date);
+  const dayOfWeek = new Date(`${targetDate}T12:00:00`).getDay();
+  if (rule === 'daily') return true;
+  if (rule === 'every-other-day' || rule === 'every-2-days') return daysSinceStart % 2 === 0;
+  if (rule.startsWith('every-') && rule.endsWith('-days')) {
+    const interval = Number(rule.slice(6, -5));
+    if (Number.isInteger(interval) && interval > 0) return daysSinceStart % interval === 0;
+  }
+  if (rule === 'weekdays') return dayOfWeek >= 1 && dayOfWeek <= 5;
+  if (rule === 'weekends') return dayOfWeek === 0 || dayOfWeek === 6;
+  if (rule === 'weekly') return daysSinceStart % 7 === 0;
+  if (rule === 'every-2-weeks' || rule === 'biweekly') return daysSinceStart % 14 === 0;
+  if (rule === 'every-4-weeks') return daysSinceStart % 28 === 0;
+  const monthsSinceStart = (Number(targetDate.slice(0, 4)) - Number(task.date.slice(0, 4))) * 12 + Number(targetDate.slice(5, 7)) - Number(task.date.slice(5, 7));
+  if (rule === 'monthly' || /^every-\d+-months$/.test(rule)) {
+    const interval = rule === 'monthly' ? 1 : Number(rule.match(/\d+/)[0]);
+    return monthsSinceStart % interval === 0 && new Date(`${targetDate}T12:00:00`).getDate() === new Date(`${task.date}T12:00:00`).getDate();
+  }
+  if (rule === 'yearly') {
+    const target = new Date(`${targetDate}T12:00:00`);
+    const origin = new Date(`${task.date}T12:00:00`);
+    return target.getMonth() === origin.getMonth() && target.getDate() === origin.getDate();
+  }
+  if (['a-d', 'd-a', 'h-e', 'e-h'].includes(rule)) {
+    const day = String(schoolSchedules[targetDate]?.schedule_day || '').toLowerCase().replace(/[^a-z]/g, '');
+    return day === rule.replace('-', '');
+  }
+  const weeklyDays = /^weekly:([0-6](?:,[0-6])*)$/.exec(rule);
+  if (weeklyDays) return weeklyDays[1].split(',').map(Number).includes(dayOfWeek);
+  return false;
+};
 const scheduleStartHour = times => {
   const hour = Number(times?.split('-')[0]?.split(':')[0]);
   return hour > 0 && hour < 6 ? hour + 12 : hour;
@@ -53,12 +92,17 @@ const schoolEventsForHour = (schedule, hour, now) => {
 
 export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
 
+  const savedCalendarView = localStorage.getItem('planner-calendar-default-view');
+  const initialCalendarView = ['day', 'week', 'month'].includes(savedCalendarView) ? savedCalendarView : 'week';
+
   const [categories, setCategories] = useState(() => {
     const saved = localStorage.getItem('planner_categories');
     return saved ? JSON.parse(saved) : INITIAL_CATEGORIES;
   });
 
-  const [viewMode, setViewMode] = useState('week'); // 'day' | 'week' | 'month'
+  const [viewMode, setViewMode] = useState(initialCalendarView); // 'day' | 'week' | 'month'
+  const [defaultView, setDefaultView] = useState(initialCalendarView);
+  const [calendarSettingsOpen, setCalendarSettingsOpen] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -133,6 +177,11 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
     else if (viewMode === 'month') d.setMonth(d.getMonth() + amount);
     setCurrentDate(d);
   };
+  const chooseDefaultView = mode => {
+    setDefaultView(mode);
+    setViewMode(mode);
+    localStorage.setItem('planner-calendar-default-view', mode);
+  };
 
   // Task Actions
   const handleSaveTask = (taskData) => {
@@ -173,8 +222,17 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
     setQuickTaskTitle('');
   };
 
-  const toggleTaskComplete = (id) => {
-    setTasks(current => current.map(t => t.id === id ? { ...t, completed: !t.completed, done: !t.completed } : t));
+  const toggleTaskComplete = (id, occurrenceDate) => {
+    setTasks(current => current.map(t => {
+      if (t.id !== id) return t;
+      if (occurrenceDate && t.recurring && t.recurring !== 'none') {
+        const completedDates = new Set(t.completedDates || []);
+        if (completedDates.has(occurrenceDate)) completedDates.delete(occurrenceDate);
+        else completedDates.add(occurrenceDate);
+        return { ...t, completedDates: [...completedDates] };
+      }
+      return { ...t, completed: !t.completed, done: !t.completed };
+    }));
   };
 
   const deleteTask = (id) => {
@@ -243,6 +301,15 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
     if (selectedCategory === 'all') return tasks;
     return tasks.filter(t => t.categoryId === selectedCategory);
   }, [tasks, selectedCategory]);
+  const tasksByDate = useMemo(() => Object.fromEntries(scheduleDates.map(date => [
+    date,
+    filteredTasks.filter(task => recurrenceOccursOn(task, date, schoolSchedules)).map(task => {
+      const recurring = task.recurring && task.recurring !== 'none';
+      const completed = recurring ? (task.completedDates || []).includes(date) : Boolean(task.completed ?? task.done);
+      return { ...task, date, occurrenceDate: date, completed, done: completed };
+    }),
+  ])), [filteredTasks, scheduleDates, schoolSchedules]);
+  const getTasksForDate = date => tasksByDate[date] || [];
 
   return (
     <div className="planner-page text-slate-800 p-4 sm:p-6 md:p-8">
@@ -389,18 +456,26 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
               </select>
 
               {/* View Toggle Buttons */}
-              <div className="flex bg-slate-200/70 p-1 rounded-xl gap-1">
-                {['day', 'week', 'month'].map((mode) => (
-                  <button
-                    key={mode}
-                    onClick={() => setViewMode(mode)}
-                    className={`px-3 py-1 rounded-lg text-xs font-semibold capitalize transition ${
-                      viewMode === mode ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    {mode}
-                  </button>
-                ))}
+              <div className="planner-view-control">
+                <div className="flex bg-slate-200/70 p-1 rounded-xl gap-1">
+                  {['day', 'week', 'month'].map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => setViewMode(mode)}
+                      className={`px-3 py-1 rounded-lg text-xs font-semibold capitalize transition ${
+                        viewMode === mode ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+                <button type="button" className="planner-view-settings-button" aria-label="Calendar view settings" aria-expanded={calendarSettingsOpen} onClick={() => setCalendarSettingsOpen(open => !open)}><Settings className="w-4 h-4"/></button>
+                {calendarSettingsOpen && <section className="planner-view-settings" aria-label="Calendar settings">
+                  <strong>Default calendar view</strong>
+                  <div className="planner-default-views">{['day', 'week', 'month'].map(mode => <button type="button" key={mode} className={defaultView === mode ? 'selected' : ''} onClick={() => chooseDefaultView(mode)}>{mode}</button>)}</div>
+                  <small>Used whenever you open the planner.</small>
+                </section>}
               </div>
             </div>
           </div>
@@ -411,7 +486,7 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
               <DayView 
                 currentDate={currentDate} 
                 hours={hours} 
-                tasks={filteredTasks} 
+                getTasksForDate={getTasksForDate}
                 schoolSchedules={schoolSchedules}
                 currentTime={currentTime}
                 categoryMap={categoryMap}
@@ -426,7 +501,7 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
               <WeekView 
                 currentDate={currentDate} 
                 hours={hours} 
-                tasks={filteredTasks} 
+                getTasksForDate={getTasksForDate}
                 schoolSchedules={schoolSchedules}
                 currentTime={currentTime}
                 categoryMap={categoryMap}
@@ -440,7 +515,7 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
             {viewMode === 'month' && (
               <MonthView 
                 currentDate={currentDate} 
-                tasks={filteredTasks} 
+                getTasksForDate={getTasksForDate}
                 schoolSchedules={schoolSchedules}
                 categoryMap={categoryMap}
               />
@@ -494,7 +569,21 @@ function SchoolPeriod({ period, schedule }) {
   </div>;
 }
 
-function DayView({ currentDate, hours, tasks, schoolSchedules, currentTime, categoryMap, categories, onDropSlot, onToggleComplete, onDeleteTask, onUpdateCategory }) {
+function CalendarSlot({ periods, tasks, schedule, categoryMap, categories, onToggleComplete, onDeleteTask, onUpdateCategory, className = '' }) {
+  const [expanded, setExpanded] = useState(false);
+  const visiblePeriods = expanded ? periods : periods.slice(0, 2);
+  const taskLimit = 1;
+  const visibleTasks = expanded ? tasks : tasks.slice(0, taskLimit);
+  const hiddenCount = periods.length - visiblePeriods.length + tasks.length - visibleTasks.length;
+
+  return <div className={`calendar-slot ${className}`}>
+    {visiblePeriods.map((period, index) => <SchoolPeriod key={`period-${period.period}-${index}`} period={period} schedule={schedule} />)}
+    {visibleTasks.map(task => <TaskCard key={task.id} task={task} categoryMap={categoryMap} categories={categories} onToggleComplete={onToggleComplete} onDeleteTask={onDeleteTask} onUpdateCategory={onUpdateCategory} />)}
+    {(hiddenCount > 0 || expanded && periods.length + tasks.length > 2) && <button type="button" className="calendar-slot-more" onClick={() => setExpanded(value => !value)}>{expanded ? 'Show less' : `Show ${hiddenCount} more`}</button>}
+  </div>;
+}
+
+function DayView({ currentDate, hours, getTasksForDate, schoolSchedules, currentTime, categoryMap, categories, onDropSlot, onToggleComplete, onDeleteTask, onUpdateCategory }) {
   const dateStr = dateKey(currentDate);
   const schoolSchedule = schoolSchedules[dateStr];
 
@@ -507,7 +596,7 @@ function DayView({ currentDate, hours, tasks, schoolSchedules, currentTime, cate
 
       <div className="divide-y divide-slate-100">
         {hours.map(hour => {
-          const hourTasks = tasks.filter(t => t.date === dateStr && t.time && t.time.startsWith(hour.slice(0, 2)));
+          const hourTasks = getTasksForDate(dateStr).filter(t => t.time && t.time.startsWith(hour.slice(0, 2)));
           return (
             <div
               key={hour}
@@ -516,23 +605,20 @@ function DayView({ currentDate, hours, tasks, schoolSchedules, currentTime, cate
               className="grid grid-cols-[80px_1fr] min-h-[64px] hover:bg-slate-50/50 transition relative group"
             >
               <div className="text-xs font-semibold text-slate-400 py-2">{hour}</div>
-              <div className="p-1 flex flex-col gap-1.5">
-                {(dateStr === dateKey(currentTime)
+              <CalendarSlot
+                className="day-calendar-slot p-1"
+                periods={dateStr === dateKey(currentTime)
                   ? schoolEventsForHour(schoolSchedule, hour, currentTime)
                   : (schoolSchedule?.periods || []).filter(period => scheduleStartHour(period.times) === Number(hour.slice(0, 2)))
-                ).map((period, index) => <SchoolPeriod key={`${period.period}-${index}`} period={period} schedule={schoolSchedule} />)}
-                {hourTasks.map(task => (
-                  <TaskCard 
-                    key={task.id} 
-                    task={task} 
-                    categoryMap={categoryMap}
-                    categories={categories}
-                    onToggleComplete={onToggleComplete}
-                    onDeleteTask={onDeleteTask}
-                    onUpdateCategory={onUpdateCategory}
-                  />
-                ))}
-              </div>
+                }
+                tasks={hourTasks}
+                schedule={schoolSchedule}
+                categoryMap={categoryMap}
+                categories={categories}
+                onToggleComplete={onToggleComplete}
+                onDeleteTask={onDeleteTask}
+                onUpdateCategory={onUpdateCategory}
+              />
             </div>
           );
         })}
@@ -544,7 +630,7 @@ function DayView({ currentDate, hours, tasks, schoolSchedules, currentTime, cate
 // ----------------------------------------------------------------------
 // Week View Component
 // ----------------------------------------------------------------------
-function WeekView({ currentDate, hours, tasks, schoolSchedules, currentTime, categoryMap, categories, onDropSlot, onToggleComplete, onDeleteTask, onUpdateCategory }) {
+function WeekView({ currentDate, hours, getTasksForDate, schoolSchedules, currentTime, categoryMap, categories, onDropSlot, onToggleComplete, onDeleteTask, onUpdateCategory }) {
   const weekDays = useMemo(() => {
     const start = new Date(currentDate);
     const day = start.getDay();
@@ -590,7 +676,7 @@ function WeekView({ currentDate, hours, tasks, schoolSchedules, currentTime, cat
             <div className="text-xs font-semibold text-slate-400 py-2 pr-2 text-right">{hour}</div>
             {weekDays.map(day => {
               const dateStr = dateKey(day);
-              const cellTasks = tasks.filter(t => t.date === dateStr && t.time && t.time.startsWith(hour.slice(0, 2)));
+              const cellTasks = getTasksForDate(dateStr).filter(t => t.time && t.time.startsWith(hour.slice(0, 2)));
               const schoolSchedule = schoolSchedules[dateStr];
               const periodEvents = dateKey(currentTime) === dateStr
                 ? schoolEventsForHour(schoolSchedule, hour, currentTime)
@@ -601,20 +687,19 @@ function WeekView({ currentDate, hours, tasks, schoolSchedules, currentTime, cat
                   key={dateStr}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={(e) => onDropSlot(e, dateStr, hour)}
-                  className="border-l border-slate-100/80 p-1 flex flex-col gap-1 hover:bg-indigo-50/20 transition"
+                  className="border-l border-slate-100/80 p-1 hover:bg-indigo-50/20 transition"
                 >
-                  {periodEvents.map((period, index) => <SchoolPeriod key={`${period.period}-${index}`} period={period} schedule={schoolSchedule} />)}
-                  {cellTasks.map(task => (
-                    <TaskCard 
-                      key={task.id} 
-                      task={task} 
-                      categoryMap={categoryMap}
-                      categories={categories}
-                      onToggleComplete={onToggleComplete}
-                      onDeleteTask={onDeleteTask}
-                      onUpdateCategory={onUpdateCategory}
-                    />
-                  ))}
+                  <CalendarSlot
+                    key={`${dateStr}-${hour}`}
+                    periods={periodEvents}
+                    tasks={cellTasks}
+                    schedule={schoolSchedule}
+                    categoryMap={categoryMap}
+                    categories={categories}
+                    onToggleComplete={onToggleComplete}
+                    onDeleteTask={onDeleteTask}
+                    onUpdateCategory={onUpdateCategory}
+                  />
                 </div>
               );
             })}
@@ -628,7 +713,7 @@ function WeekView({ currentDate, hours, tasks, schoolSchedules, currentTime, cat
 // ----------------------------------------------------------------------
 // Month View Component
 // ----------------------------------------------------------------------
-function MonthView({ currentDate, tasks, schoolSchedules, categoryMap }) {
+function MonthView({ currentDate, getTasksForDate, schoolSchedules, categoryMap }) {
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
 
@@ -654,7 +739,7 @@ function MonthView({ currentDate, tasks, schoolSchedules, categoryMap }) {
           if (!day) return <div key={`empty-${idx}`} className="min-h-[90px] bg-slate-50/30 rounded-lg" />;
           
           const dateStr = dateKey(day);
-          const dayTasks = tasks.filter(t => t.date === dateStr);
+          const dayTasks = getTasksForDate(dateStr);
           const schoolSchedule = schoolSchedules[dateStr];
           const isToday = new Date().toDateString() === day.toDateString();
 
@@ -709,7 +794,7 @@ function TaskCard({ task, categoryMap, categories, onToggleComplete, onDeleteTas
           <input
             type="checkbox"
             checked={task.completed}
-            onChange={() => onToggleComplete(task.id)}
+            onChange={() => onToggleComplete(task.id, task.occurrenceDate)}
             className="rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer flex-shrink-0"
           />
           <span className={`font-semibold truncate ${task.completed ? 'line-through opacity-60' : ''}`}>
@@ -823,9 +908,42 @@ function TaskModal({ task, categories, onClose, onSave }) {
                 onChange={(e) => setRecurring(e.target.value)}
                 className="w-full border rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
               >
-                <option value="none">None</option>
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
+                <option value="none">Does not repeat</option>
+                <optgroup label="School schedule days">
+                  <option value="a-d">Every A-D day</option>
+                  <option value="d-a">Every D-A day</option>
+                  <option value="h-e">Every H-E day</option>
+                  <option value="e-h">Every E-H day</option>
+                </optgroup>
+                <optgroup label="Common repeats">
+                  <option value="daily">Every day</option>
+                  <option value="every-other-day">Every other day</option>
+                  <option value="weekdays">Every weekday</option>
+                  <option value="weekends">Every weekend</option>
+                  <option value="weekly">Every week on this weekday</option>
+                  <option value="every-2-weeks">Every 2 weeks</option>
+                  <option value="every-4-weeks">Every 4 weeks</option>
+                  <option value="monthly">Every month on this date</option>
+                  <option value="every-2-months">Every 2 months</option>
+                  <option value="every-3-months">Every 3 months</option>
+                  <option value="every-6-months">Every 6 months</option>
+                  <option value="yearly">Every year</option>
+                </optgroup>
+                <optgroup label="Day intervals">
+                  <option value="every-3-days">Every 3 days</option>
+                  <option value="every-4-days">Every 4 days</option>
+                  <option value="every-5-days">Every 5 days</option>
+                  <option value="every-6-days">Every 6 days</option>
+                </optgroup>
+                <optgroup label="Weekly on a specific day">
+                  <option value="weekly:0">Every Sunday</option>
+                  <option value="weekly:1">Every Monday</option>
+                  <option value="weekly:2">Every Tuesday</option>
+                  <option value="weekly:3">Every Wednesday</option>
+                  <option value="weekly:4">Every Thursday</option>
+                  <option value="weekly:5">Every Friday</option>
+                  <option value="weekly:6">Every Saturday</option>
+                </optgroup>
               </select>
             </div>
           </div>
