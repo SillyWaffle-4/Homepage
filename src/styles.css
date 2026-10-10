@@ -107,7 +107,7 @@ button, input { font: inherit; } button { cursor: pointer; }
 .planner-page .max-w-7xl > :not([hidden]) ~ :not([hidden]) { margin-top: 14px; }
 .planner-page .glass-card { min-width: 0; padding: 16px; }
 .planner-page .planner-summary { gap: 14px; }
-.planner-calendar-card-day { width:calc(100% + 96px); max-width:calc(100vw - 48px); margin-left:-48px; }
+.planner-calendar-card-day { width:100%; max-width:100%; margin-left:0; }
 .planner-calendar-scroll { max-height: clamp(190px, calc(100vh - 490px), 52vh); min-height: 0; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .planner-day-view { display:grid; width:100%; min-width:0; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
 .planner-day-column { min-width:0; overflow:hidden; border:1px solid rgba(100,116,139,.25); border-radius:11px; background:rgba(255,255,255,.12); }
