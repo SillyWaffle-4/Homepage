@@ -3,6 +3,7 @@ import { CalendarDays, Check, ChevronDown, CloudSun, Download, Eye, EyeOff, Grip
 import { Responsive, WidthProvider } from "react-grid-layout/legacy";
 import PlannerDashboard from "./Planner";
 import SchoolPeriodsWidget from "./SchoolPeriodsWidget";
+import { saveDashboardSettings, syncDashboardSettings } from "./googleSettings";
 
 const Grid = WidthProvider(Responsive);
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -99,13 +100,20 @@ export default function App() {
   const [now, setNow] = useState(new Date()), [quote, setQuote] = useState(0), [minutes, setMinutes] = useState(25), [left, setLeft] = useState(1500), [running, setRunning] = useState(false);
   const [weather, setWeather] = useState(null), [weatherStatus, setWeatherStatus] = useState("loading"), [weatherError, setWeatherError] = useState("");
   const [calendarEvents, setCalendarEvents] = useState([]), [calendarStatus, setCalendarStatus] = useState("disconnected"), [calendarError, setCalendarError] = useState(""), [googleReady, setGoogleReady] = useState(false);
+  const [settingsSyncStatus, setSettingsSyncStatus] = useState("local");
   const [calendarRemembered, setCalendarRemembered] = useState(() => localStorage.getItem("dash-calendar-connected") === "true");
   const googleTokenClient = useRef(null);
+  const googleAccessToken = useRef(null);
+  const googleSettingsFileId = useRef(null);
+  const settingsSyncReady = useRef(false);
+  const settingsSaveTimer = useRef(null);
+  const settingsSaveQueue = useRef(Promise.resolve());
   const calendarAutoAttempted = useRef(false);
   useEffect(() => { const interval = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(interval); }, []);
   useEffect(() => localStorage.setItem("dash-layouts", JSON.stringify(layouts)), [layouts]); useEffect(() => localStorage.setItem("dash-visible", JSON.stringify(visible)), [visible]); useEffect(() => localStorage.setItem("dash-saved-layouts", JSON.stringify(savedLayouts)), [savedLayouts]); useEffect(() => { localStorage.setItem("dash-tasks", JSON.stringify(tasks)); localStorage.removeItem("planner_tasks"); }, [tasks]);
   useEffect(() => { document.documentElement.dataset.font = font; localStorage.setItem("dash-font", font); }, [font]); useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem("dash-theme", theme); }, [theme]); useEffect(() => localStorage.setItem("dash-city", city), [city]);
   useEffect(() => localStorage.setItem("dash-name", name), [name]); useEffect(() => localStorage.setItem("dash-workspace", workspace), [workspace]); useEffect(() => localStorage.setItem("dash-clock", clockMode), [clockMode]); useEffect(() => localStorage.setItem("dash-unit", unit), [unit]); useEffect(() => localStorage.setItem("dash-appearance", JSON.stringify(appearance)), [appearance]); useEffect(() => localStorage.setItem("dash-links", JSON.stringify(links)), [links]); useEffect(() => localStorage.setItem("dash-topbar-hidden", String(topbarHidden)), [topbarHidden]); useEffect(() => localStorage.setItem("dash-habits", JSON.stringify(habits)), [habits]); useEffect(() => localStorage.setItem("dash-note", note), [note]); useEffect(() => localStorage.setItem("dash-seconds", String(showSeconds)), [showSeconds]);
+  useEffect(() => { window.dispatchEvent(new Event("dash-settings-changed")); }, [layouts, visible, savedLayouts, font, theme, city, name, workspace, clockMode, unit, appearance, links, topbarHidden, showSeconds, dashboardView]);
   useEffect(() => { if (!running || !left) return; const interval = setInterval(() => setLeft(value => value - 1), 1000); return () => clearInterval(interval); }, [running, left]); useEffect(() => { if (!left) setRunning(false); }, [left]);
   useEffect(() => {
     if (!googleClientId || window.google?.accounts?.oauth2) { setGoogleReady(Boolean(window.google?.accounts?.oauth2)); return; }
@@ -116,6 +124,42 @@ export default function App() {
     script.onload = () => setGoogleReady(Boolean(window.google?.accounts?.oauth2));
     script.onerror = () => setCalendarError("Google sign-in could not be loaded.");
     document.head.appendChild(script);
+  }, []);
+  const syncGoogleSettings = async accessToken => {
+    settingsSyncReady.current = false;
+    setSettingsSyncStatus("syncing");
+    const result = await syncDashboardSettings(accessToken);
+    googleSettingsFileId.current = result.fileId;
+    if (result.hydrated && sessionStorage.getItem("dash-google-settings-hydrated") !== "true") {
+      sessionStorage.setItem("dash-google-settings-hydrated", "true");
+      window.location.reload();
+      return;
+    }
+    sessionStorage.removeItem("dash-google-settings-hydrated");
+    settingsSyncReady.current = true;
+    setSettingsSyncStatus("saved");
+  };
+  useEffect(() => {
+    const queueSave = () => {
+      if (!settingsSyncReady.current || !googleAccessToken.current || !googleSettingsFileId.current) return;
+      window.clearTimeout(settingsSaveTimer.current);
+      settingsSaveTimer.current = window.setTimeout(() => {
+        settingsSaveQueue.current = settingsSaveQueue.current.then(async () => {
+          if (!settingsSyncReady.current) return;
+          setSettingsSyncStatus("saving");
+          await saveDashboardSettings(googleAccessToken.current, googleSettingsFileId.current);
+          setSettingsSyncStatus("saved");
+        }).catch(error => {
+          setSettingsSyncStatus("error");
+          setCalendarError(error.message || "Google could not save your dashboard settings.");
+        });
+      }, 500);
+    };
+    window.addEventListener("dash-settings-changed", queueSave);
+    return () => {
+      window.removeEventListener("dash-settings-changed", queueSave);
+      window.clearTimeout(settingsSaveTimer.current);
+    };
   }, []);
   const fetchCalendarEvents = async accessToken => {
     setCalendarStatus("loading"); setCalendarError("");
@@ -153,15 +197,21 @@ export default function App() {
     calendarAutoAttempted.current = true;
     googleTokenClient.current = window.google.accounts.oauth2.initTokenClient({
       client_id: googleClientId,
-      scope: "https://www.googleapis.com/auth/calendar.readonly",
+      scope: "https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.appdata",
       callback: tokenResponse => {
         if (tokenResponse.error || !tokenResponse.access_token) {
           setCalendarStatus(silent ? "disconnected" : "error");
           setCalendarError(silent ? "Google needs you to reconnect. Select Connect Google Calendar to continue." : "Google sign-in was not completed.");
           return;
         }
+        googleAccessToken.current = tokenResponse.access_token;
         setCalendarRemembered(true);
         localStorage.setItem("dash-calendar-connected", "true");
+        void syncGoogleSettings(tokenResponse.access_token).catch(error => {
+          settingsSyncReady.current = false;
+          setSettingsSyncStatus("error");
+          setCalendarError(error.message || "Google could not load your dashboard settings. Browser storage is still available.");
+        });
         void fetchCalendarEvents(tokenResponse.access_token);
       },
       error_callback: () => {
@@ -170,12 +220,12 @@ export default function App() {
       },
     });
     setCalendarStatus("loading");
-    googleTokenClient.current.requestAccessToken({prompt: silent || calendarRemembered ? "" : "consent"});
+    googleTokenClient.current.requestAccessToken({prompt: silent ? "" : "consent"});
   };
   useEffect(() => {
-    if (!googleReady || !calendarRemembered || dashboardView !== "home" || !visible.includes("calendar")) return;
+    if (!googleReady || !calendarRemembered) return;
     connectGoogleCalendar(true);
-  }, [googleReady, calendarRemembered, dashboardView, visible]);
+  }, [googleReady, calendarRemembered]);
   useEffect(() => {
     if (!city.trim()) { setWeather(null); setWeatherStatus("error"); setWeatherError("Enter a city to see its weather."); return; }
     const controller = new AbortController();
@@ -317,7 +367,7 @@ export default function App() {
       <section className="setting"><span>Top bar</span><label className="toggle-row"><span>Hide header bar</span><input type="checkbox" checked={topbarHidden} onChange={event => setTopbarHidden(event.target.checked)}/><i/></label></section>
       <section className="setting"><span>Clock & weather</span><div className="choice-row"><button className={clockMode === "12" ? "selected" : ""} type="button" onClick={() => setClockMode("12")}>12-hour time</button><button className={clockMode === "24" ? "selected" : ""} type="button" onClick={() => setClockMode("24")}>24-hour time</button></div><label className="toggle-row"><span>Show seconds</span><input type="checkbox" checked={showSeconds} onChange={event => setShowSeconds(event.target.checked)}/><i/></label><div className="choice-row"><button className={unit === "F" ? "selected" : ""} type="button" onClick={() => setUnit("F")}>Fahrenheit</button><button className={unit === "C" ? "selected" : ""} type="button" onClick={() => setUnit("C")}>Celsius</button></div><label htmlFor="city">Weather location</label><div className="city"><input id="city" value={city} placeholder="City name" onChange={event => setCity(event.target.value)}/><ChevronDown size={17}/></div><small className="field-hint">Current conditions and today's high/low.</small></section>
       <section className="setting"><span>Shortcuts</span>{links.map((link,index) => <div className="link-editor" key={index}><input aria-label={`Shortcut ${index + 1} name`} value={link.name} onChange={event => updateLink(index,"name",event.target.value)} /><input aria-label={`Shortcut ${index + 1} URL`} value={link.url} onChange={event => updateLink(index,"url",event.target.value)} /><input aria-label={`Shortcut ${index + 1} color`} className="link-color" type="color" value={link.color} onChange={event => updateLink(index,"color",event.target.value)} /><IconButton label={`Remove ${link.name || "shortcut"}`} onClick={() => setLinks(current => current.filter((_,item) => item !== index))}><Trash2 size={15}/></IconButton></div>)}<button className="add-shortcut-setting" type="button" onClick={() => setLinks(current => [...current,{name:"New link",url:"https://",color:"#6658e8"}])}><Plus size={16}/>Add shortcut</button></section>
-      <section className="setting backup-setting"><span>Backup & restore</span><button type="button" onClick={exportWorkspace}><Download size={16}/>Export dashboard</button><label className="import-button"><Upload size={16}/>Import dashboard<input type="file" accept="application/json,.json" onChange={importWorkspace}/></label>{backupMessage && <small className="field-hint" role="status">{backupMessage}</small>}<button className="reset-all" type="button" onClick={resetAll}><Trash2 size={16}/>Reset all data</button></section>
+      <section className="setting backup-setting"><span>Backup & restore</span><small className="field-hint" role="status">{settingsSyncStatus === "saved" ? "Dashboard settings are saved to your Google account and this browser." : settingsSyncStatus === "saving" ? "Saving dashboard settings to Google…" : settingsSyncStatus === "syncing" ? "Loading dashboard settings from Google…" : settingsSyncStatus === "error" ? "Google settings sync needs attention. This browser copy is still saved." : "Dashboard settings are saved in this browser. Connect Google Calendar to sync them to your account."}</small><button type="button" onClick={exportWorkspace}><Download size={16}/>Export dashboard</button><label className="import-button"><Upload size={16}/>Import dashboard<input type="file" accept="application/json,.json" onChange={importWorkspace}/></label>{backupMessage && <small className="field-hint" role="status">{backupMessage}</small>}<button className="reset-all" type="button" onClick={resetAll}><Trash2 size={16}/>Reset all data</button></section>
       <button className="reset" type="button" onClick={reset}><RotateCcw size={17}/>Reset widget layout</button></aside>}
     {(library || settings) && <button className="scrim" type="button" aria-label="Close panel" onClick={() => { setLibrary(false); setSettings(false); }}/>}</main>;
 }

@@ -29,6 +29,7 @@ const dateOrdinal = value => {
 };
 const recurrenceOccursOn = (task, targetDate, schoolSchedules) => {
   if (!task.date || targetDate < task.date) return false;
+  if ((task.skippedDates || []).includes(targetDate)) return false;
   const rule = String(task.recurring || 'none').toLowerCase();
   if (rule === 'none') return targetDate === task.date;
   const daysSinceStart = dateOrdinal(targetDate) - dateOrdinal(task.date);
@@ -111,9 +112,11 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [quickTaskTitle, setQuickTaskTitle] = useState('');
+  const [deleteOccurrence, setDeleteOccurrence] = useState(null);
 
   useEffect(() => {
     localStorage.setItem('planner_categories', JSON.stringify(categories));
+    window.dispatchEvent(new Event('dash-settings-changed'));
   }, [categories]);
 
   // Clock Ticker
@@ -183,10 +186,12 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
     setDefaultView(mode);
     setViewMode(mode);
     localStorage.setItem('planner-calendar-default-view', mode);
+    window.dispatchEvent(new Event('dash-settings-changed'));
   };
   const chooseOverflowBehavior = enabled => {
     setShowOneMoreAtATime(enabled);
     localStorage.setItem('planner-show-one-more', String(enabled));
+    window.dispatchEvent(new Event('dash-settings-changed'));
   };
 
   // Task Actions
@@ -241,8 +246,23 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
     }));
   };
 
-  const deleteTask = (id) => {
-    setTasks(current => current.filter(t => t.id !== id));
+  const deleteTask = task => {
+    if (task.recurring && task.recurring !== 'none' && task.occurrenceDate) {
+      setDeleteOccurrence(task);
+      return;
+    }
+    setTasks(current => current.filter(item => item.id !== task.id));
+  };
+
+  const confirmDeleteTask = deleteSeries => {
+    if (!deleteOccurrence) return;
+    const { id, occurrenceDate } = deleteOccurrence;
+    setTasks(current => deleteSeries
+      ? current.filter(task => task.id !== id)
+      : current.map(task => task.id === id
+        ? { ...task, skippedDates: [...new Set([...(task.skippedDates || []), occurrenceDate])] }
+        : task));
+    setDeleteOccurrence(null);
   };
 
   const updateTaskCategory = (taskId, categoryId) => {
@@ -555,6 +575,22 @@ export default function PlannerDashboard({ name = "Aiden", tasks, setTasks }) {
           onRename={handleRenameCategory}
         />
       )}
+
+      {deleteOccurrence && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setDeleteOccurrence(null); }}>
+          <section className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="delete-task-title">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div><h2 id="delete-task-title" className="text-lg font-bold text-slate-800">Delete repeating task?</h2><p className="mt-1 text-sm text-slate-500">{deleteOccurrence.title} · {deleteOccurrence.occurrenceDate}</p></div>
+              <button type="button" onClick={() => setDeleteOccurrence(null)} aria-label="Cancel delete" className="rounded-lg p-1 text-slate-500 hover:bg-slate-100"><X className="h-5 w-5"/></button>
+            </div>
+            <div className="grid gap-2">
+              <button type="button" onClick={() => confirmDeleteTask(false)} className="rounded-xl border border-slate-200 px-4 py-3 text-left hover:bg-slate-50"><strong className="block text-sm text-slate-800">Only this occurrence</strong><span className="text-xs text-slate-500">Keep the task on its other dates.</span></button>
+              <button type="button" onClick={() => confirmDeleteTask(true)} className="rounded-xl border border-rose-200 px-4 py-3 text-left text-rose-700 hover:bg-rose-50"><strong className="block text-sm">All occurrences</strong><span className="text-xs text-rose-600">Delete the repeating task and its series.</span></button>
+              <button type="button" onClick={() => setDeleteOccurrence(null)} className="mt-1 rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
@@ -823,7 +859,10 @@ function TaskCard({ task, categoryMap, categories, onToggleComplete, onDeleteTas
         </div>
 
         <button 
-          onClick={() => onDeleteTask(task.id)}
+          type="button"
+          aria-label={task.recurring && task.recurring !== 'none' ? `Delete ${task.title} occurrence` : `Delete ${task.title}`}
+          title={task.recurring && task.recurring !== 'none' ? 'Choose whether to delete one date or the full series' : 'Delete task'}
+          onClick={() => onDeleteTask(task)}
           className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-rose-600 transition flex-shrink-0"
         >
           <X className="w-3.5 h-3.5" />
